@@ -78,7 +78,7 @@ def task_upload_gold_to_gcs(**_context) -> None:
 with DAG(
     dag_id="rpg_data_foundation",
     start_date=datetime(2024, 1, 1),
-    schedule_interval=None,
+    schedule=None,
     catchup=False,
     tags=["rpg", "data-foundation"],
 ) as dag:
