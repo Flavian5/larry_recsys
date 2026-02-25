@@ -1,3 +1,9 @@
+## Larry Recsys – Semantic ID Prototype
+
+This repo is a **semantic ID prototype** for the RPG POC. The current work focuses on data foundations; the goal is to evolve this into an **openclaw agent** once the full pipeline and semantics are in place.
+
+---
+
 ## Data Foundations (Overture + OSM) – RPG TDD
 
 This repo contains the **Data Foundation** layer for the RPG POC, focused on:
