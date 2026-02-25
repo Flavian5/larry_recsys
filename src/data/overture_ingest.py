@@ -75,4 +75,3 @@ def sample_overture_places_by_bbox(
 
     df.to_parquet(out)
     return out
-

@@ -58,4 +58,3 @@ def sync_local_to_gcs(
     blob.upload_from_filename(str(path))
 
     return f"gs://{bucket_name}/{blob_name}"
-

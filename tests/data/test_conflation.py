@@ -46,8 +46,20 @@ def test_spatial_conflate_matches_within_radius() -> None:
     )
     osm_df = pd.DataFrame(
         [
-            {"osm_id": 10, "lat": 37.7801, "lon": -122.4001, "amenity": "restaurant", "dog_friendly": True},
-            {"osm_id": 20, "lat": 41.0, "lon": -121.0, "amenity": "cafe", "dog_friendly": False},
+            {
+                "osm_id": 10,
+                "lat": 37.7801,
+                "lon": -122.4001,
+                "amenity": "restaurant",
+                "dog_friendly": True,
+            },
+            {
+                "osm_id": 20,
+                "lat": 41.0,
+                "lon": -121.0,
+                "amenity": "cafe",
+                "dog_friendly": False,
+            },
         ]
     )
 
@@ -75,7 +87,13 @@ def test_conflate_parquet_roundtrip(tmp_path: Path) -> None:
 
     pd.DataFrame(
         [
-            {"osm_id": 99, "lat": 37.78005, "lon": -122.40005, "amenity": "bar", "dog_friendly": False},
+            {
+                "osm_id": 99,
+                "lat": 37.78005,
+                "lon": -122.40005,
+                "amenity": "bar",
+                "dog_friendly": False,
+            },
         ]
     ).to_parquet(osm_path)
 
@@ -130,4 +148,3 @@ def test_silver_to_gold_roundtrip(tmp_path: Path) -> None:
     gold_df = pd.read_parquet(gold_path)
     assert "gold_text" in gold_df.columns
     assert "Cafe Example is a cafe in SF." in gold_df.iloc[0]["gold_text"]
-

@@ -52,4 +52,3 @@ def test_extract_osm_pois_raises_when_core_columns_missing(tmp_path: Path) -> No
     out = tmp_path / "out.parquet"
     with pytest.raises(ValueError):
         extract_osm_pois(src, out)
-

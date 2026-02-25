@@ -28,7 +28,9 @@ def test_detect_env_defaults_to_local(monkeypatch: pytest.MonkeyPatch) -> None:
         ("unknown-env", "local"),
     ],
 )
-def test_detect_env_variants(monkeypatch: pytest.MonkeyPatch, value: str, expected: str) -> None:
+def test_detect_env_variants(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: str
+) -> None:
     monkeypatch.setenv("RPG_ENV", value)
     assert detect_env() == expected
 
@@ -74,7 +76,9 @@ def test_build_dated_gcs_path_without_components() -> None:
     assert path == "gs://larry-rpg-dev-gold/2024-01-01"
 
 
-def test_load_config_wires_env_and_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_config_wires_env_and_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("RPG_ENV", "composer-dev")
     monkeypatch.setenv("RPG_GCP_PROJECT", "larry-rpg-dev")
     monkeypatch.setenv("RPG_GCS_BUCKET_RAW", "larry-rpg-dev-raw")
@@ -89,4 +93,3 @@ def test_load_config_wires_env_and_paths(tmp_path: Path, monkeypatch: pytest.Mon
     assert cfg.gcs.raw == "gs://larry-rpg-dev-raw"
     assert cfg.gcs.silver == "gs://larry-rpg-dev-silver"
     assert cfg.gcs.gold == "gs://larry-rpg-dev-gold"
-

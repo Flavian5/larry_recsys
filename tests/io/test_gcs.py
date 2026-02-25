@@ -77,4 +77,3 @@ def test_sync_local_to_gcs_raises_for_missing_file(tmp_path: Path) -> None:
     missing = tmp_path / "does_not_exist.txt"
     with pytest.raises(FileNotFoundError):
         gcs.sync_local_to_gcs(missing, "gs://bucket/blob.txt")
-

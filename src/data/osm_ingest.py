@@ -37,7 +37,11 @@ def extract_osm_pois(
 
     df = pd.read_parquet(src)
 
-    keys = list(tag_keys) if tag_keys is not None else ["amenity", "cuisine", "dog_friendly"]
+    keys = (
+        list(tag_keys)
+        if tag_keys is not None
+        else ["amenity", "cuisine", "dog_friendly"]
+    )
 
     for key in keys:
         if key not in df.columns:
@@ -57,4 +61,3 @@ def extract_osm_pois(
     out_df = df[ordered_cols]
     out_df.to_parquet(dst)
     return dst
-

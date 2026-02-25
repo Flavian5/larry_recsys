@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-
 EnvKind = Literal["local", "composer-dev", "composer-prod"]
 
 
@@ -100,4 +99,3 @@ def build_dated_gcs_path(base_uri: str, date_str: str, *components: str) -> str:
     if parts:
         return f"{base_uri}/{date_str}/{parts}"
     return f"{base_uri}/{date_str}"
-

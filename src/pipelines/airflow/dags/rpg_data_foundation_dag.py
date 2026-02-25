@@ -4,11 +4,10 @@ from datetime import datetime
 from pathlib import Path
 
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-
+from airflow.providers.standard.operators.python import PythonOperator
 from config.data_foundation import load_config
 from data.conflation import conflate_parquet, silver_to_gold
-from io import gcs as gcs_io
+from src.io import gcs as gcs_io
 from data.osm_ingest import extract_osm_pois
 from data.overture_ingest import BBox, sample_overture_places_by_bbox
 
@@ -109,4 +108,3 @@ with DAG(
     )
 
     overture_sample >> osm_extract >> build_silver >> build_gold >> upload_gold_to_gcs
-

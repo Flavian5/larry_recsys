@@ -2,12 +2,18 @@ from pathlib import Path
 
 import pandas as pd
 
-from data.overture_ingest import BBox, build_overture_parquet_url, sample_overture_places_by_bbox
+from data.overture_ingest import (
+    BBox,
+    build_overture_parquet_url,
+    sample_overture_places_by_bbox,
+)
 
 
 def test_build_overture_parquet_url_shape() -> None:
     url = build_overture_parquet_url("2024-01-01")
-    assert url.startswith("https://overturemaps-us-west-2.s3.amazonaws.com/release/2024-01-01/")
+    assert url.startswith(
+        "https://overturemaps-us-west-2.s3.amazonaws.com/release/2024-01-01/"
+    )
     assert "theme=places" in url
     assert "type=place" in url
     assert url.endswith("*.parquet")
@@ -35,4 +41,3 @@ def test_sample_overture_places_by_bbox_filters_and_writes(tmp_path: Path) -> No
     sampled = pd.read_parquet(result_path)
     assert list(sampled["id"]) == ["a"]
     assert sampled.iloc[0]["name"] == "Inside"
-

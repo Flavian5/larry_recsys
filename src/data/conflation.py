@@ -80,7 +80,10 @@ def _haversine_m(
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
 
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return r * c
 
@@ -211,4 +214,3 @@ def silver_to_gold(silver_path: _PathLike, output_path: _PathLike) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     gold_df.to_parquet(out)
     return out
-
