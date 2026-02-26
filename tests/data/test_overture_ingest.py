@@ -63,5 +63,6 @@ def test_sample_overture_places_by_bbox_filters_and_writes(tmp_path: Path) -> No
     assert result_path.exists()
 
     sampled = pd.read_parquet(result_path)
-    assert list(sampled["id"]) == ["a"]
+    assert "gers_id" in sampled.columns  # id is aliased to gers_id for conflation
+    assert list(sampled["gers_id"]) == ["a"]
     assert sampled.iloc[0]["name"] == "Inside"

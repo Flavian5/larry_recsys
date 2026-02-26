@@ -22,6 +22,7 @@ def test_dag_has_expected_tasks_and_order() -> None:
         "build_silver",
         "build_gold",
         "upload_gold_to_gcs",
+        "cleanup_raw_temp",
     ]
 
     overture_sample = dag.get_task("overture_sample")
@@ -29,11 +30,13 @@ def test_dag_has_expected_tasks_and_order() -> None:
     build_silver = dag.get_task("build_silver")
     build_gold = dag.get_task("build_gold")
     upload_gold_to_gcs = dag.get_task("upload_gold_to_gcs")
+    cleanup_raw_temp = dag.get_task("cleanup_raw_temp")
 
     assert osm_extract in overture_sample.downstream_list
     assert build_silver in osm_extract.downstream_list
     assert build_gold in build_silver.downstream_list
     assert upload_gold_to_gcs in build_gold.downstream_list
+    assert cleanup_raw_temp in upload_gold_to_gcs.downstream_list
 
 
 def test_tasks_use_injected_config_when_provided(tmp_path: Path) -> None:

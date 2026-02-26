@@ -36,6 +36,9 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Pipeline raw data (Overture/OSM pulls and temp; set RPG_CLEANUP_RAW_TEMP=false to keep temp)
+data/raw/
+
 # Unit test / coverage reports
 htmlcov/
 .tox/

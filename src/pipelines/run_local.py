@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from config.data_foundation import Config
@@ -22,6 +23,7 @@ from config.data_foundation import Config
 from pipelines.airflow.dags.rpg_data_foundation_dag import (
     task_build_gold,
     task_build_silver,
+    task_cleanup_raw_temp,
     task_overture_sample,
     task_osm_extract,
 )
@@ -87,15 +89,30 @@ def main() -> int:
         ("osm_extract", task_osm_extract),
         ("build_silver", task_build_silver),
         ("build_gold", task_build_gold),
+        ("cleanup_raw_temp", task_cleanup_raw_temp),
     ]
     for name, task_fn in tasks:
-        print(f"Running {name}...")
+        print(f"\n--- {name} ---", flush=True)
+        t0 = time.perf_counter()
         try:
             task_fn(config=cfg)
         except Exception as e:
-            print(f"Task {name} failed: {e}", file=sys.stderr)
+            print(f"Task {name} failed after {time.perf_counter() - t0:.1f}s: {e}", file=sys.stderr)
             return 1
-    print("Done. Silver:", cfg.local.silver / cfg.silver_venues_filename())
+        elapsed = time.perf_counter() - t0
+        print(f"{name} finished in {elapsed:.1f}s", flush=True)
+        if name == "overture_sample":
+            p = cfg.local.raw / "overture" / "temp" / "overture_sample.parquet"
+            print(f"  -> {p} (exists: {p.exists()})", flush=True)
+        elif name == "osm_extract":
+            p = cfg.local.raw / "osm" / "temp" / "osm_pois.parquet"
+            print(f"  -> {p} (exists: {p.exists()})", flush=True)
+        elif name == "build_silver":
+            print(f"  -> {cfg.local.silver / cfg.silver_venues_filename()}", flush=True)
+        elif name == "build_gold":
+            print(f"  -> {cfg.local.gold / cfg.gold_venues_filename()}", flush=True)
+    print("\nDone.", flush=True)
+    print("Silver:", cfg.local.silver / cfg.silver_venues_filename())
     print("Gold:", cfg.local.gold / cfg.gold_venues_filename())
     return 0
 

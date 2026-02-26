@@ -164,9 +164,13 @@ def conflate_parquet(
 
     output_format: "parquet" (default) or "text". When "text", writes JSONL for local inspection.
     """
+    print(f"[conflation] Loading overture: {overture_path}", flush=True)
     overture_df = pd.read_parquet(overture_path)
+    print(f"[conflation] Loading OSM: {osm_path}", flush=True)
     osm_df = pd.read_parquet(osm_path)
+    print(f"[conflation] Conflating ({len(overture_df)} overture, {len(osm_df)} osm) ...", flush=True)
     silver_df = spatial_conflate(overture_df, osm_df, radius_m)
+    print(f"[conflation] Silver: {len(silver_df)} rows", flush=True)
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -174,6 +178,7 @@ def conflate_parquet(
         silver_df.to_json(out, orient="records", lines=True, date_format="iso")
     else:
         silver_df.to_parquet(out)
+    print(f"[conflation] Wrote {out}", flush=True)
     return out
 
 
@@ -242,7 +247,9 @@ def silver_to_gold(
     Uses vectorized string ops for large datasets; only the list column (osm_amenities)
     uses a single .apply. output_format: "parquet" (default) or "text".
     """
+    print(f"[gold] Loading silver: {silver_path}", flush=True)
     silver_df = _read_silver(Path(silver_path))
+    print(f"[gold] Building gold_text for {len(silver_df)} rows ...", flush=True)
     gold_df = silver_df.copy()
     gold_df["gold_text"] = _gold_text_vectorized(gold_df)
 
@@ -252,4 +259,5 @@ def silver_to_gold(
         out.write_text("\n".join(gold_df["gold_text"].astype(str)), encoding="utf-8")
     else:
         gold_df.to_parquet(out)
+    print(f"[gold] Wrote {out}", flush=True)
     return out

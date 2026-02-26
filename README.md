@@ -23,6 +23,9 @@ Configuration is driven by environment variables. Copy `.env.example` to `.env`,
 | **Dataset sources** | `RPG_OVERTURE_PLACES_BASE_URL`, `RPG_OVERTURE_PLACES_URI`, `RPG_OVERTURE_RELEASE_DATE`, `RPG_OSM_EXTRACT_URI` (empty = use DAG default local paths) |
 | **Local output** | `RPG_LOCAL_OUTPUT_FORMAT` = `parquet` \| `text` (use `text` to write silver as JSONL and gold as `.txt` for inspection) |
 | **Optional GCS sync** | `RPG_ENABLE_LOCAL_GCS_SYNC`, `RPG_GCS_GOLD_URI` |
+| **Raw temp cleanup** | `RPG_CLEANUP_RAW_TEMP` = `true` (default) deletes `data/raw/overture/temp` and `data/raw/osm/temp` after the pipeline; set to `false` to keep them. |
+
+Pulled Overture and OSM data is written under `data/raw/overture/temp/` and `data/raw/osm/temp/`. By default the pipeline removes these after building silver and gold. Set `RPG_CLEANUP_RAW_TEMP=false` to keep them for inspection.
 
 See `.env.example` for all variables and comments.
 

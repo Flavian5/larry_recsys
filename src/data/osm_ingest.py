@@ -35,7 +35,9 @@ def extract_osm_pois(
     dst = Path(output_path)
     dst.parent.mkdir(parents=True, exist_ok=True)
 
+    print(f"[osm] Reading from {src} ...", flush=True)
     df = pd.read_parquet(src)
+    print(f"[osm] Read {len(df)} rows", flush=True)
 
     keys = (
         list(tag_keys)
@@ -59,5 +61,7 @@ def extract_osm_pois(
         ordered_cols.append("raw_tags")
 
     out_df = df[ordered_cols]
+    print(f"[osm] Writing to {dst} ...", flush=True)
     out_df.to_parquet(dst)
+    print(f"[osm] Wrote {dst} ({len(out_df)} rows)", flush=True)
     return dst

@@ -56,8 +56,8 @@ def test_run_local_full_pipeline_with_local_sources(
     task_build_silver(config=cfg)
     task_build_gold(config=cfg)
 
-    assert (cfg.local.raw / "overture_sample.parquet").exists()
-    assert (cfg.local.raw / "osm_pois.parquet").exists()
+    assert (cfg.local.raw / "overture" / "temp" / "overture_sample.parquet").exists()
+    assert (cfg.local.raw / "osm" / "temp" / "osm_pois.parquet").exists()
     assert (cfg.local.silver / "venues.parquet").exists()
     assert (cfg.local.gold / "venues.parquet").exists()
     gold_df = pd.read_parquet(cfg.local.gold / "venues.parquet")

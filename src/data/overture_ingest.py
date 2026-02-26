@@ -88,20 +88,27 @@ def sample_overture_places_by_bbox(
     """
     Sample Overture Places within a bounding box and write them to Parquet.
 
-    For local development and tests, `source` can be a local Parquet file or
-    glob pattern. For cloud-scale runs, the same function can be used with the
-    HTTP URL pattern built by `build_overture_parquet_url` when DuckDB's
-    httpfs extension is enabled.
-
-    The input is expected to expose numeric columns `lon` and `lat`.
-    If limit is set, at most that many rows are returned (for local sampling).
+    For local development and tests, `source` can be a local Parquet file with
+    columns `lon`, `lat`, and `id` (or `gers_id`). For remote Overture data,
+    the schema uses `bbox` (struct: xmin, xmax, ymin, ymax) and `id`; we derive
+    lon/lat from bbox centroid and alias id -> gers_id so the output matches
+    what the conflation pipeline expects (gers_id, lat, lon).
     """
+    import time
+
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    src = source.strip()
+    if src.startswith("s3://"):
+        print(f"[overture] Reading from S3 (this may take several minutes)...", flush=True)
+        print(f"[overture] Source: {src}", flush=True)
+    else:
+        print(f"[overture] Reading from local: {src}", flush=True)
+    t0 = time.perf_counter()
+
     con = duckdb.connect()
     try:
-        src = source.strip()
         if src.lower().startswith("http") or src.startswith("s3://"):
             con.execute("INSTALL httpfs")
             con.execute("LOAD httpfs")
@@ -114,21 +121,45 @@ def sample_overture_places_by_bbox(
             """,
             [source],
         )
+        load_sec = time.perf_counter() - t0
+        n_total = con.execute("SELECT COUNT(*) FROM overture_src").fetchone()[0]
+        print(f"[overture] Loaded {n_total} rows in {load_sec:.1f}s", flush=True)
 
-        sql = """
-            SELECT *
-            FROM overture_src
-            WHERE lon BETWEEN ? AND ?
-              AND lat BETWEEN ? AND ?
-            """
+        # Overture Places schema: bbox (xmin,xmax=lon; ymin,ymax=lat), id. No lon/lat columns.
+        # If source has bbox, derive lon/lat from centroid; else use lon/lat (local fixtures).
+        cols = [c[0] for c in con.execute("DESCRIBE overture_src").fetchall()]
+        if "bbox" in cols:
+            sql = """
+                SELECT
+                    id AS gers_id,
+                    (bbox.xmin + bbox.xmax) / 2 AS lon,
+                    (bbox.ymin + bbox.ymax) / 2 AS lat
+                FROM overture_src
+                WHERE bbox IS NOT NULL
+                  AND (bbox.xmin + bbox.xmax) / 2 BETWEEN ? AND ?
+                  AND (bbox.ymin + bbox.ymax) / 2 BETWEEN ? AND ?
+                """
+        else:
+            sql = """
+                SELECT *
+                FROM overture_src
+                WHERE lon BETWEEN ? AND ?
+                  AND lat BETWEEN ? AND ?
+                """
         params: list[object] = [bbox.minx, bbox.maxx, bbox.miny, bbox.maxy]
         if limit is not None:
             sql += " LIMIT ?"
             params.append(limit)
 
         df: pd.DataFrame = con.execute(sql, params).df()
+        if "gers_id" not in df.columns and "id" in df.columns:
+            df = df.rename(columns={"id": "gers_id"})
     finally:
         con.close()
 
+    n_out = len(df)
+    print(f"[overture] Filtered to {n_out} rows (bbox + limit)", flush=True)
+    print(f"[overture] Writing to {out} ...", flush=True)
     df.to_parquet(out)
+    print(f"[overture] Wrote {out} ({n_out} rows)", flush=True)
     return out
