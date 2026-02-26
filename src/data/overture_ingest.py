@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 import duckdb
 import pandas as pd
+
+DEFAULT_OVERTURE_PLACES_BASE = "https://overturemaps-us-west-2.s3.amazonaws.com"
 
 
 @dataclass(frozen=True)
@@ -21,16 +24,21 @@ class _PathLike(Protocol):
         ...
 
 
-def build_overture_parquet_url(release_date: str) -> str:
+def build_overture_parquet_url(
+    release_date: str,
+    base_url: str | None = None,
+) -> str:
     """
     Build the public HTTP URL pattern for Overture Places GeoParquet.
 
-    This follows the documented layout, but the function is kept pure so that
-    tests only need to assert on the returned string, not on network access.
+    base_url defaults to RPG_OVERTURE_PLACES_BASE_URL env var, then
+    DEFAULT_OVERTURE_PLACES_BASE. Pass explicitly (e.g. from config) to avoid env.
     """
     release = release_date.strip()
-    base = "https://overturemaps-us-west-2.s3.amazonaws.com"
-    return f"{base}/release/{release}/theme=places/type=place/*.parquet"
+    base = base_url or os.getenv(
+        "RPG_OVERTURE_PLACES_BASE_URL", DEFAULT_OVERTURE_PLACES_BASE
+    )
+    return f"{base.rstrip('/')}/release/{release}/theme=places/type=place/*.parquet"
 
 
 def sample_overture_places_by_bbox(

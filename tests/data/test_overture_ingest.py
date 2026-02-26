@@ -19,6 +19,16 @@ def test_build_overture_parquet_url_shape() -> None:
     assert url.endswith("*.parquet")
 
 
+def test_build_overture_parquet_url_custom_base() -> None:
+    url = build_overture_parquet_url(
+        "2024-03-12",
+        base_url="https://custom-overture.example.com",
+    )
+    assert url == (
+        "https://custom-overture.example.com/release/2024-03-12/theme=places/type=place/*.parquet"
+    )
+
+
 def test_sample_overture_places_by_bbox_filters_and_writes(tmp_path: Path) -> None:
     source = tmp_path / "overture_places.parquet"
     df = pd.DataFrame(

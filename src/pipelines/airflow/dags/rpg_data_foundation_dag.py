@@ -1,23 +1,41 @@
 from __future__ import annotations
 
 from datetime import datetime
+from os import getenv
 from pathlib import Path
 
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from config.data_foundation import (
+    DataFoundationConfig,
     gold_venues_filename,
     load_config,
     silver_venues_filename,
 )
 from data.conflation import conflate_parquet, silver_to_gold
-from src.io import gcs as gcs_io
 from data.osm_ingest import extract_osm_pois
-from data.overture_ingest import BBox, sample_overture_places_by_bbox
+from data.overture_ingest import (
+    BBox,
+    build_overture_parquet_url,
+    sample_overture_places_by_bbox,
+)
+from src.io import gcs as gcs_io
 
 
 def _default_data_dir() -> Path:
     return Path(".") / "data"
+
+
+def _overture_source(cfg: DataFoundationConfig, data_root: Path) -> str:
+    """Resolve Overture Places source: config URI, URL from release date + base, or local path."""
+    if cfg.datasets.overture_places:
+        return cfg.datasets.overture_places
+    release = getenv("RPG_OVERTURE_RELEASE_DATE", "").strip()
+    if release:
+        return build_overture_parquet_url(
+            release, base_url=cfg.datasets.overture_places_base
+        )
+    return str(data_root / "raw" / "overture" / "places.parquet")
 
 
 def task_overture_sample(**_context) -> None:
@@ -26,9 +44,7 @@ def task_overture_sample(**_context) -> None:
     raw_dir = data_root / "raw" / "overture"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    # For local runs this expects a pre-downloaded Parquet in raw/overture.
-    # The bbox is chosen to be small for fixture-style development.
-    source = str(raw_dir / "places.parquet")
+    source = _overture_source(cfg, data_root)
     bbox = BBox(minx=-122.5, maxx=-122.3, miny=37.7, maxy=37.9)
     output = cfg.local.raw / "overture_sample.parquet"
     sample_overture_places_by_bbox(source, bbox, output)
@@ -40,7 +56,11 @@ def task_osm_extract(**_context) -> None:
     raw_dir = data_root / "raw" / "osm"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    source = raw_dir / "mini_region.parquet"
+    source = (
+        cfg.datasets.osm_extract
+        if cfg.datasets.osm_extract
+        else raw_dir / "mini_region.parquet"
+    )
     output = cfg.local.raw / "osm_pois.parquet"
     extract_osm_pois(source, output)
 
@@ -70,8 +90,6 @@ def task_upload_gold_to_gcs(**_context) -> None:
 
     Controlled via RPG_ENABLE_LOCAL_GCS_SYNC and RPG_GCS_GOLD_URI.
     """
-    from os import getenv
-
     if getenv("RPG_ENABLE_LOCAL_GCS_SYNC", "").lower() not in {"1", "true", "yes", "y"}:
         return
 

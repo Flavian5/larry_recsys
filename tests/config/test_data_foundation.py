@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from config.data_foundation import (
+    DEFAULT_OVERTURE_PLACES_BASE,
     DataFoundationConfig,
     build_dated_gcs_path,
     build_gcs_uris,
@@ -96,6 +97,29 @@ def test_load_config_wires_env_and_paths(
     assert cfg.gcs.silver == "gs://larry-rpg-dev-silver"
     assert cfg.gcs.gold == "gs://larry-rpg-dev-gold"
     assert cfg.local_output_format == "parquet"
+    assert cfg.datasets.overture_places_base == DEFAULT_OVERTURE_PLACES_BASE
+    assert cfg.datasets.overture_places == ""
+    assert cfg.datasets.osm_extract == ""
+
+
+def test_load_config_dataset_uris_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "RPG_OVERTURE_PLACES_URI", "https://example.com/overture/*.parquet"
+    )
+    monkeypatch.setenv("RPG_OSM_EXTRACT_URI", "https://example.com/osm.parquet")
+    cfg = load_config(base_dir=Path("."))
+    assert cfg.datasets.overture_places == "https://example.com/overture/*.parquet"
+    assert cfg.datasets.osm_extract == "https://example.com/osm.parquet"
+
+
+def test_load_config_overture_places_base_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "RPG_OVERTURE_PLACES_BASE_URL", "https://custom-overture.example.com"
+    )
+    cfg = load_config(base_dir=Path("."))
+    assert cfg.datasets.overture_places_base == "https://custom-overture.example.com"
 
 
 def test_load_config_local_output_format_text(monkeypatch: pytest.MonkeyPatch) -> None:

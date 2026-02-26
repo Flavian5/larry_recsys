@@ -21,6 +21,24 @@ class GCSUris:
     gold: str
 
 
+DEFAULT_OVERTURE_PLACES_BASE = "https://overturemaps-us-west-2.s3.amazonaws.com"
+
+
+@dataclass(frozen=True)
+class DatasetUris:
+    """
+    URIs or URLs for upstream dataset sources. Empty means use DAG default local paths.
+    - overture_places_base: Base URL for Overture Places (used with release date). Env: RPG_OVERTURE_PLACES_BASE_URL.
+    - overture_places: Full Overture Places URI (overrides base+release when set). Set RPG_OVERTURE_PLACES_URI,
+      or use RPG_OVERTURE_RELEASE_DATE with overture_places_base.
+    - osm_extract: OSM extract (URL or path). Set RPG_OSM_EXTRACT_URI when non-local.
+    """
+
+    overture_places_base: str
+    overture_places: str
+    osm_extract: str
+
+
 @dataclass(frozen=True)
 class DataFoundationConfig:
     env: EnvKind
@@ -29,6 +47,8 @@ class DataFoundationConfig:
     gcs: GCSUris
     """When 'text', silver/gold are written as plain text (jsonl / txt) for local inspection."""
     local_output_format: OutputFormat
+    """Upstream dataset sources. Empty strings = use DAG default local paths."""
+    datasets: DatasetUris
 
 
 def _get_env_var(name: str, default: str | None = None) -> str | None:
@@ -77,6 +97,19 @@ def build_gcs_uris(
     return GCSUris(raw=to_uri(raw_b), silver=to_uri(silver_b), gold=to_uri(gold_b))
 
 
+def _build_dataset_uris() -> DatasetUris:
+    overture_base = (
+        _get_env_var("RPG_OVERTURE_PLACES_BASE_URL") or DEFAULT_OVERTURE_PLACES_BASE
+    )
+    overture = _get_env_var("RPG_OVERTURE_PLACES_URI", "") or ""
+    osm = _get_env_var("RPG_OSM_EXTRACT_URI", "") or ""
+    return DatasetUris(
+        overture_places_base=overture_base,
+        overture_places=overture,
+        osm_extract=osm,
+    )
+
+
 def _detect_local_output_format() -> OutputFormat:
     raw = (_get_env_var("RPG_LOCAL_OUTPUT_FORMAT", "parquet") or "parquet").lower()
     if raw == "text":
@@ -100,12 +133,14 @@ def load_config(base_dir: str | Path = ".") -> DataFoundationConfig:
     local_paths = build_local_paths(base_dir)
     gcs_uris = build_gcs_uris(project=project)
     local_output_format = _detect_local_output_format()
+    datasets = _build_dataset_uris()
     return DataFoundationConfig(
         env=env,
         gcp_project=project,
         local=local_paths,
         gcs=gcs_uris,
         local_output_format=local_output_format,
+        datasets=datasets,
     )
 
 
