@@ -1,22 +1,39 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 import duckdb
 import pandas as pd
+from pydantic import BaseModel, model_validator
 
 DEFAULT_OVERTURE_PLACES_BASE = "https://overturemaps-us-west-2.s3.amazonaws.com"
 
 
-@dataclass(frozen=True)
-class BBox:
+class BBox(BaseModel, frozen=True):
+    """Bounding box (minx, maxx, miny, maxy). Validates min <= max for x and y."""
+
     minx: float
     maxx: float
     miny: float
     maxy: float
+
+    @property
+    def width(self) -> float:
+        return self.maxx - self.minx
+
+    @property
+    def height(self) -> float:
+        return self.maxy - self.miny
+
+    @model_validator(mode="after")
+    def check_min_max(self) -> "BBox":
+        if self.minx > self.maxx:
+            raise ValueError("minx must be <= maxx")
+        if self.miny > self.maxy:
+            raise ValueError("miny must be <= maxy")
+        return self
 
 
 class _PathLike(Protocol):

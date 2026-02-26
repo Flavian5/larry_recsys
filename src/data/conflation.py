@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Protocol
 
 import pandas as pd
+from pydantic import BaseModel
 
 
 class _PathLike(Protocol):
@@ -142,8 +142,9 @@ def spatial_conflate(
     return df
 
 
-@dataclass(frozen=True)
-class SilverPaths:
+class SilverPaths(BaseModel, frozen=True):
+    """Validated paths for silver conflation step."""
+
     overture: Path
     osm: Path
     conflated: Path

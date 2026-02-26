@@ -9,9 +9,9 @@ from airflow.providers.standard.operators.python import PythonOperator
 from config.data_foundation import (
     DataFoundationConfig,
     gold_venues_filename,
-    load_config,
     silver_venues_filename,
 )
+from pipelines.airflow.validation import get_validated_config
 from data.conflation import conflate_parquet, silver_to_gold
 from data.osm_ingest import extract_osm_pois
 from data.overture_ingest import (
@@ -39,7 +39,7 @@ def _overture_source(cfg: DataFoundationConfig, data_root: Path) -> str:
 
 
 def task_overture_sample(**_context) -> None:
-    cfg = load_config()
+    cfg = get_validated_config()
     data_root = _default_data_dir()
     raw_dir = data_root / "raw" / "overture"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -51,7 +51,7 @@ def task_overture_sample(**_context) -> None:
 
 
 def task_osm_extract(**_context) -> None:
-    cfg = load_config()
+    cfg = get_validated_config()
     data_root = _default_data_dir()
     raw_dir = data_root / "raw" / "osm"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -66,7 +66,7 @@ def task_osm_extract(**_context) -> None:
 
 
 def task_build_silver(**_context) -> None:
-    cfg = load_config()
+    cfg = get_validated_config()
     overture_path = cfg.local.raw / "overture_sample.parquet"
     osm_path = cfg.local.raw / "osm_pois.parquet"
     fmt = cfg.local_output_format
@@ -77,7 +77,7 @@ def task_build_silver(**_context) -> None:
 
 
 def task_build_gold(**_context) -> None:
-    cfg = load_config()
+    cfg = get_validated_config()
     fmt = cfg.local_output_format
     silver_path = cfg.local.silver / silver_venues_filename(fmt)
     gold_path = cfg.local.gold / gold_venues_filename(fmt)
@@ -93,7 +93,7 @@ def task_upload_gold_to_gcs(**_context) -> None:
     if getenv("RPG_ENABLE_LOCAL_GCS_SYNC", "").lower() not in {"1", "true", "yes", "y"}:
         return
 
-    cfg = load_config()
+    cfg = get_validated_config()
     local_gold = cfg.local.gold / gold_venues_filename(cfg.local_output_format)
     gcs_uri = getenv("RPG_GCS_GOLD_URI", cfg.gcs.gold)
     if not gcs_uri:

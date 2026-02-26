@@ -1,31 +1,31 @@
+from __future__ import annotations
+
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+from pydantic import BaseModel, Field
 
 EnvKind = Literal["local", "composer-dev", "composer-prod"]
 OutputFormat = Literal["parquet", "text"]
 
 
-@dataclass(frozen=True)
-class LocalPaths:
+class LocalPaths(BaseModel, frozen=True):
     raw: Path
     silver: Path
     gold: Path
 
 
-@dataclass(frozen=True)
-class GCSUris:
-    raw: str
-    silver: str
-    gold: str
+class GCSUris(BaseModel, frozen=True):
+    raw: str = ""
+    silver: str = ""
+    gold: str = ""
 
 
 DEFAULT_OVERTURE_PLACES_BASE = "https://overturemaps-us-west-2.s3.amazonaws.com"
 
 
-@dataclass(frozen=True)
-class DatasetUris:
+class DatasetUris(BaseModel, frozen=True):
     """
     URIs or URLs for upstream dataset sources. Empty means use DAG default local paths.
     - overture_places_base: Base URL for Overture Places (used with release date). Env: RPG_OVERTURE_PLACES_BASE_URL.
@@ -34,19 +34,18 @@ class DatasetUris:
     - osm_extract: OSM extract (URL or path). Set RPG_OSM_EXTRACT_URI when non-local.
     """
 
-    overture_places_base: str
-    overture_places: str
-    osm_extract: str
+    overture_places_base: str = DEFAULT_OVERTURE_PLACES_BASE
+    overture_places: str = ""
+    osm_extract: str = ""
 
 
-@dataclass(frozen=True)
-class DataFoundationConfig:
+class DataFoundationConfig(BaseModel, frozen=True):
     env: EnvKind
-    gcp_project: str | None
+    gcp_project: str | None = None
     local: LocalPaths
     gcs: GCSUris
     """When 'text', silver/gold are written as plain text (jsonl / txt) for local inspection."""
-    local_output_format: OutputFormat
+    local_output_format: OutputFormat = Field(default="parquet")
     """Upstream dataset sources. Empty strings = use DAG default local paths."""
     datasets: DatasetUris
 
@@ -57,7 +56,7 @@ def _get_env_var(name: str, default: str | None = None) -> str | None:
 
 
 def detect_env() -> EnvKind:
-    raw = _get_env_var("RPG_ENV", "local").lower()
+    raw = (_get_env_var("RPG_ENV", "local") or "local").lower()
     if raw in {"local", "composer-dev", "composer-prod"}:
         return raw  # type: ignore[return-value]
     # Fall back to local for unknown values to keep behaviour predictable in dev.
@@ -128,6 +127,7 @@ def gold_venues_filename(output_format: OutputFormat) -> str:
 
 
 def load_config(base_dir: str | Path = ".") -> DataFoundationConfig:
+    """Load and validate DataFoundationConfig from environment. Raises ValidationError if invalid."""
     env = detect_env()
     project = _get_env_var("RPG_GCP_PROJECT")
     local_paths = build_local_paths(base_dir)
