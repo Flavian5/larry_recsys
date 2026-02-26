@@ -148,3 +148,83 @@ def test_silver_to_gold_roundtrip(tmp_path: Path) -> None:
     gold_df = pd.read_parquet(gold_path)
     assert "gold_text" in gold_df.columns
     assert "Cafe Example is a cafe in SF." in gold_df.iloc[0]["gold_text"]
+
+
+def test_conflate_parquet_text_mode(tmp_path: Path) -> None:
+    overture_path = tmp_path / "overture.parquet"
+    osm_path = tmp_path / "osm.parquet"
+    pd.DataFrame(
+        [{"gers_id": "Z1", "lat": 37.78, "lon": -122.40, "city": "SF"}]
+    ).to_parquet(overture_path)
+    pd.DataFrame(
+        [
+            {
+                "osm_id": 99,
+                "lat": 37.78005,
+                "lon": -122.40005,
+                "amenity": "bar",
+                "dog_friendly": False,
+            },
+        ]
+    ).to_parquet(osm_path)
+
+    out = tmp_path / "venues.jsonl"
+    result_path = conflate_parquet(
+        overture_path, osm_path, out, radius_m=30, output_format="text"
+    )
+    assert result_path == out
+    assert out.exists()
+    content = out.read_text()
+    assert "gers_id" in content and "Z1" in content
+    assert "osm_ids" in content
+
+
+def test_silver_to_gold_text_mode(tmp_path: Path) -> None:
+    silver_path = tmp_path / "silver.parquet"
+    df = pd.DataFrame(
+        [
+            {
+                "gers_id": "G1",
+                "name": "Cafe Example",
+                "category": "cafe",
+                "city": "SF",
+                "osm_amenities": ["cafe"],
+                "lat": 37.78,
+                "lon": -122.40,
+            }
+        ]
+    )
+    df.to_parquet(silver_path)
+
+    gold_path = tmp_path / "venues.txt"
+    result = silver_to_gold(silver_path, gold_path, output_format="text")
+
+    assert result == gold_path
+    assert gold_path.exists()
+    lines = gold_path.read_text().strip().split("\n")
+    assert len(lines) == 1
+    assert "Cafe Example is a cafe in SF." in lines[0]
+
+
+def test_silver_to_gold_reads_jsonl(tmp_path: Path) -> None:
+    silver_path = tmp_path / "silver.jsonl"
+    df = pd.DataFrame(
+        [
+            {
+                "gers_id": "G1",
+                "name": "Cafe Example",
+                "category": "cafe",
+                "city": "SF",
+                "osm_amenities": ["cafe"],
+                "lat": 37.78,
+                "lon": -122.40,
+            }
+        ]
+    )
+    df.to_json(silver_path, orient="records", lines=True)
+
+    gold_path = tmp_path / "gold.txt"
+    result = silver_to_gold(silver_path, gold_path, output_format="text")
+    assert result == gold_path
+    assert gold_path.exists()
+    assert "Cafe Example is a cafe in SF." in gold_path.read_text()

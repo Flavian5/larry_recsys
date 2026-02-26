@@ -9,7 +9,9 @@ from config.data_foundation import (
     build_gcs_uris,
     build_local_paths,
     detect_env,
+    gold_venues_filename,
     load_config,
+    silver_venues_filename,
 )
 
 
@@ -93,3 +95,17 @@ def test_load_config_wires_env_and_paths(
     assert cfg.gcs.raw == "gs://larry-rpg-dev-raw"
     assert cfg.gcs.silver == "gs://larry-rpg-dev-silver"
     assert cfg.gcs.gold == "gs://larry-rpg-dev-gold"
+    assert cfg.local_output_format == "parquet"
+
+
+def test_load_config_local_output_format_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RPG_LOCAL_OUTPUT_FORMAT", "text")
+    cfg = load_config(base_dir=Path("."))
+    assert cfg.local_output_format == "text"
+
+
+def test_silver_gold_venues_filename() -> None:
+    assert silver_venues_filename("parquet") == "venues.parquet"
+    assert silver_venues_filename("text") == "venues.jsonl"
+    assert gold_venues_filename("parquet") == "venues.parquet"
+    assert gold_venues_filename("text") == "venues.txt"

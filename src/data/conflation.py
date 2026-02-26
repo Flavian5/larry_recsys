@@ -154,9 +154,13 @@ def conflate_parquet(
     osm_path: _PathLike,
     output_path: _PathLike,
     radius_m: float,
+    *,
+    output_format: str = "parquet",
 ) -> Path:
     """
     Convenience function: load Overture/OSM Parquet files, conflate, and write Silver.
+
+    output_format: "parquet" (default) or "text". When "text", writes JSONL for local inspection.
     """
     overture_df = pd.read_parquet(overture_path)
     osm_df = pd.read_parquet(osm_path)
@@ -164,7 +168,10 @@ def conflate_parquet(
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    silver_df.to_parquet(out)
+    if output_format == "text":
+        silver_df.to_json(out, orient="records", lines=True, date_format="iso")
+    else:
+        silver_df.to_parquet(out)
     return out
 
 
@@ -202,15 +209,32 @@ def format_gold_record(row: pd.Series) -> str:
     return f"{sentence1} {sentence2}"
 
 
-def silver_to_gold(silver_path: _PathLike, output_path: _PathLike) -> Path:
+def _read_silver(path: Path) -> pd.DataFrame:
+    """Load silver from Parquet or JSONL."""
+    if str(path).endswith(".jsonl"):
+        return pd.read_json(path, lines=True)
+    return pd.read_parquet(path)
+
+
+def silver_to_gold(
+    silver_path: _PathLike,
+    output_path: _PathLike,
+    *,
+    output_format: str = "parquet",
+) -> Path:
     """
-    Convert a Silver Parquet file into a Gold Parquet with `gold_text`.
+    Convert a Silver file (Parquet or JSONL) into Gold with `gold_text`.
+
+    output_format: "parquet" (default) or "text". When "text", writes one gold_text line per row for local inspection.
     """
-    silver_df = pd.read_parquet(silver_path)
+    silver_df = _read_silver(Path(silver_path))
     gold_df = silver_df.copy()
     gold_df["gold_text"] = gold_df.apply(format_gold_record, axis=1)
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    gold_df.to_parquet(out)
+    if output_format == "text":
+        out.write_text("\n".join(gold_df["gold_text"].astype(str)), encoding="utf-8")
+    else:
+        gold_df.to_parquet(out)
     return out

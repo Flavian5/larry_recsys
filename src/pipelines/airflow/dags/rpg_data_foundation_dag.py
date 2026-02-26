@@ -5,7 +5,11 @@ from pathlib import Path
 
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
-from config.data_foundation import load_config
+from config.data_foundation import (
+    gold_venues_filename,
+    load_config,
+    silver_venues_filename,
+)
 from data.conflation import conflate_parquet, silver_to_gold
 from src.io import gcs as gcs_io
 from data.osm_ingest import extract_osm_pois
@@ -45,15 +49,19 @@ def task_build_silver(**_context) -> None:
     cfg = load_config()
     overture_path = cfg.local.raw / "overture_sample.parquet"
     osm_path = cfg.local.raw / "osm_pois.parquet"
-    silver_path = cfg.local.silver / "venues.parquet"
-    conflate_parquet(overture_path, osm_path, silver_path, radius_m=50.0)
+    fmt = cfg.local_output_format
+    silver_path = cfg.local.silver / silver_venues_filename(fmt)
+    conflate_parquet(
+        overture_path, osm_path, silver_path, radius_m=50.0, output_format=fmt
+    )
 
 
 def task_build_gold(**_context) -> None:
     cfg = load_config()
-    silver_path = cfg.local.silver / "venues.parquet"
-    gold_path = cfg.local.gold / "venues.parquet"
-    silver_to_gold(silver_path, gold_path)
+    fmt = cfg.local_output_format
+    silver_path = cfg.local.silver / silver_venues_filename(fmt)
+    gold_path = cfg.local.gold / gold_venues_filename(fmt)
+    silver_to_gold(silver_path, gold_path, output_format=fmt)
 
 
 def task_upload_gold_to_gcs(**_context) -> None:
@@ -68,7 +76,7 @@ def task_upload_gold_to_gcs(**_context) -> None:
         return
 
     cfg = load_config()
-    local_gold = cfg.local.gold / "venues.parquet"
+    local_gold = cfg.local.gold / gold_venues_filename(cfg.local_output_format)
     gcs_uri = getenv("RPG_GCS_GOLD_URI", cfg.gcs.gold)
     if not gcs_uri:
         return

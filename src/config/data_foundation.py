@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 EnvKind = Literal["local", "composer-dev", "composer-prod"]
+OutputFormat = Literal["parquet", "text"]
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,8 @@ class DataFoundationConfig:
     gcp_project: str | None
     local: LocalPaths
     gcs: GCSUris
+    """When 'text', silver/gold are written as plain text (jsonl / txt) for local inspection."""
+    local_output_format: OutputFormat
 
 
 def _get_env_var(name: str, default: str | None = None) -> str | None:
@@ -74,16 +77,35 @@ def build_gcs_uris(
     return GCSUris(raw=to_uri(raw_b), silver=to_uri(silver_b), gold=to_uri(gold_b))
 
 
+def _detect_local_output_format() -> OutputFormat:
+    raw = (_get_env_var("RPG_LOCAL_OUTPUT_FORMAT", "parquet") or "parquet").lower()
+    if raw == "text":
+        return "text"
+    return "parquet"
+
+
+def silver_venues_filename(output_format: OutputFormat) -> str:
+    """Filename for silver venues output (e.g. venues.parquet or venues.jsonl)."""
+    return "venues.jsonl" if output_format == "text" else "venues.parquet"
+
+
+def gold_venues_filename(output_format: OutputFormat) -> str:
+    """Filename for gold venues output (e.g. venues.parquet or venues.txt)."""
+    return "venues.txt" if output_format == "text" else "venues.parquet"
+
+
 def load_config(base_dir: str | Path = ".") -> DataFoundationConfig:
     env = detect_env()
     project = _get_env_var("RPG_GCP_PROJECT")
     local_paths = build_local_paths(base_dir)
     gcs_uris = build_gcs_uris(project=project)
+    local_output_format = _detect_local_output_format()
     return DataFoundationConfig(
         env=env,
         gcp_project=project,
         local=local_paths,
         gcs=gcs_uris,
+        local_output_format=local_output_format,
     )
 
 
