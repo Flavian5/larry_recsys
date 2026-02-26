@@ -5,10 +5,6 @@ from airflow.models import DAG
 from config.data_foundation import Config
 from pipelines.airflow.dags.rpg_data_foundation_dag import (
     dag,
-    task_build_gold,
-    task_build_silver,
-    task_osm_extract,
-    task_overture_sample,
     task_upload_gold_to_gcs,
 )
 

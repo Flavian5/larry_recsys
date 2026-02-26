@@ -126,6 +126,24 @@ def test_config_from_env_local_output_format_text(
     assert cfg.local_output_format == "text"
 
 
+def test_config_from_env_overture_release_date_and_sample_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RPG_OVERTURE_RELEASE_DATE", " 2024-03-15 ")
+    monkeypatch.setenv("RPG_OVERTURE_SAMPLE_LIMIT", "5000")
+    cfg = Config.from_env(base_dir=Path("."))
+    assert cfg.overture_release_date == "2024-03-15"
+    assert cfg.overture_sample_limit == 5000
+
+
+def test_config_from_env_overture_sample_limit_ignored_when_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RPG_OVERTURE_SAMPLE_LIMIT", "not-a-number")
+    cfg = Config.from_env(base_dir=Path("."))
+    assert cfg.overture_sample_limit is None
+
+
 def test_config_for_test_injectable(tmp_path: Path) -> None:
     """Config.for_test() builds a valid config without env vars (for DI in tests)."""
     cfg = Config.for_test(tmp_path)

@@ -30,7 +30,9 @@ def _overture_source(cfg: Config, data_root: Path) -> str:
     """Resolve Overture Places source from config or env."""
     if cfg.datasets.overture_places:
         return cfg.datasets.overture_places
-    release = getenv("RPG_OVERTURE_RELEASE_DATE", "").strip()
+    release = (
+        cfg.overture_release_date or getenv("RPG_OVERTURE_RELEASE_DATE", "")
+    ).strip()
     if release:
         return build_overture_parquet_url(
             release, base_url=cfg.datasets.overture_places_base
@@ -51,7 +53,9 @@ def task_overture_sample(
     source = _overture_source(cfg, data_root)
     bbox = BBox(minx=-122.5, maxx=-122.3, miny=37.7, maxy=37.9)
     output = cfg.local.raw / "overture_sample.parquet"
-    sample_overture_places_by_bbox(source, bbox, output)
+    sample_overture_places_by_bbox(
+        source, bbox, output, limit=cfg.overture_sample_limit
+    )
 
 
 def task_osm_extract(

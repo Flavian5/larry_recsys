@@ -62,6 +62,8 @@ def sample_overture_places_by_bbox(
     source: str,
     bbox: BBox,
     output_path: _PathLike,
+    *,
+    limit: int | None = None,
 ) -> Path:
     """
     Sample Overture Places within a bounding box and write them to Parquet.
@@ -72,12 +74,16 @@ def sample_overture_places_by_bbox(
     httpfs extension is enabled.
 
     The input is expected to expose numeric columns `lon` and `lat`.
+    If limit is set, at most that many rows are returned (for local sampling).
     """
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     con = duckdb.connect()
     try:
+        if source.strip().lower().startswith("http"):
+            con.execute("INSTALL httpfs")
+            con.execute("LOAD httpfs")
         con.execute(
             """
             CREATE TABLE overture_src AS
@@ -86,15 +92,18 @@ def sample_overture_places_by_bbox(
             [source],
         )
 
-        df: pd.DataFrame = con.execute(
-            """
+        sql = """
             SELECT *
             FROM overture_src
             WHERE lon BETWEEN ? AND ?
               AND lat BETWEEN ? AND ?
-            """,
-            [bbox.minx, bbox.maxx, bbox.miny, bbox.maxy],
-        ).df()
+            """
+        params: list[object] = [bbox.minx, bbox.maxx, bbox.miny, bbox.maxy]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        df: pd.DataFrame = con.execute(sql, params).df()
     finally:
         con.close()
 

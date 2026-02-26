@@ -263,3 +263,70 @@ def test_silver_to_gold_reads_jsonl(tmp_path: Path) -> None:
     assert result == gold_path
     assert gold_path.exists()
     assert "Cafe Example is a cafe in SF." in gold_path.read_text()
+
+
+def test_conflation_pipeline_overture_to_gold(tmp_path: Path) -> None:
+    """
+    Integration test: Overture + OSM parquet -> conflate_parquet -> silver -> silver_to_gold -> gold.
+    Exercises the full file-based pipeline with real I/O.
+    """
+    # 1. Write Overture and OSM source parquet files
+    overture_path = tmp_path / "overture.parquet"
+    osm_path = tmp_path / "osm.parquet"
+
+    overture_df = pd.DataFrame(
+        [
+            {"gers_id": "V1", "lat": 37.78, "lon": -122.40, "city": "SF"},
+            {"gers_id": "V2", "lat": 37.79, "lon": -122.41, "city": "Oakland"},
+            {"gers_id": "V3", "lat": 40.0, "lon": -120.0, "city": "Nowhere"},
+        ]
+    )
+    overture_df.to_parquet(overture_path, index=False)
+
+    osm_df = pd.DataFrame(
+        [
+            {
+                "osm_id": 101,
+                "lat": 37.7801,
+                "lon": -122.4001,
+                "amenity": "restaurant",
+                "dog_friendly": True,
+            },
+            {
+                "osm_id": 102,
+                "lat": 37.7902,
+                "lon": -122.4102,
+                "amenity": "cafe",
+                "dog_friendly": False,
+            },
+        ]
+    )
+    osm_df.to_parquet(osm_path, index=False)
+
+    # 2. Conflate: produce silver parquet
+    silver_path = tmp_path / "silver" / "venues.parquet"
+    conflate_parquet(overture_path, osm_path, silver_path, radius_m=200)
+
+    assert silver_path.exists()
+    silver = pd.read_parquet(silver_path)
+    assert list(silver["gers_id"]) == ["V1", "V2", "V3"]
+    assert list(silver.iloc[0]["osm_ids"]) == [101]
+    assert list(silver.iloc[0]["osm_amenities"]) == ["restaurant"]
+    assert bool(silver.iloc[0]["has_dog_friendly"]) is True
+    assert list(silver.iloc[1]["osm_ids"]) == [102]
+    assert list(silver.iloc[2]["osm_ids"]) == []
+
+    # 3. Silver -> Gold (add gold_text)
+    gold_path = tmp_path / "gold" / "venues.parquet"
+    silver_to_gold(silver_path, gold_path)
+
+    assert gold_path.exists()
+    gold = pd.read_parquet(gold_path)
+    assert "gold_text" in gold.columns
+    assert len(gold) == 3
+    # Gold text uses silver row lat/lon and osm_amenities; no name/category so " is a  in <city>."
+    first_text = gold.iloc[0]["gold_text"]
+    assert "37.78000" in first_text and "-122.40000" in first_text
+    assert "restaurant" in first_text
+    assert "SF" in first_text
+    assert gold.iloc[2]["gold_text"]  # no amenities, but location sentence present

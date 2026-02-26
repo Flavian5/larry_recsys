@@ -53,6 +53,9 @@ class Config(BaseModel, frozen=True):
     gcs: GCSUris
     local_output_format: OutputFormat = Field(default="parquet")
     datasets: DatasetUris
+    # Local / run overrides: Overture release date and row limit for sampling
+    overture_release_date: str = Field(default="")
+    overture_sample_limit: int | None = Field(default=None)
 
     # --- Factory: from environment (production/DAG) ---
 
@@ -65,6 +68,11 @@ class Config(BaseModel, frozen=True):
         gcs_uris = _build_gcs_uris(project=project)
         output_format = _detect_local_output_format()
         datasets = _build_dataset_uris()
+        release_date = (_get_env_var("RPG_OVERTURE_RELEASE_DATE") or "").strip()
+        sample_limit = _get_env_var("RPG_OVERTURE_SAMPLE_LIMIT")
+        overture_sample_limit = (
+            int(sample_limit) if sample_limit and sample_limit.isdigit() else None
+        )
         return cls(
             env=env,
             gcp_project=project,
@@ -72,6 +80,8 @@ class Config(BaseModel, frozen=True):
             gcs=gcs_uris,
             local_output_format=output_format,
             datasets=datasets,
+            overture_release_date=release_date,
+            overture_sample_limit=overture_sample_limit,
         )
 
     # --- Factory: for tests (inject this into tasks) ---
@@ -90,6 +100,8 @@ class Config(BaseModel, frozen=True):
         overture_places_base: str = DEFAULT_OVERTURE_PLACES_BASE,
         overture_places: str = "",
         osm_extract: str = "",
+        overture_release_date: str = "",
+        overture_sample_limit: int | None = None,
     ) -> Config:
         """Build a valid config with overrides for testing. No env vars required."""
         base = Path(base_dir)
@@ -111,6 +123,8 @@ class Config(BaseModel, frozen=True):
             gcs=gcs,
             local_output_format=output_format,
             datasets=datasets,
+            overture_release_date=overture_release_date,
+            overture_sample_limit=overture_sample_limit,
         )
 
     # --- Helpers (convenience on config instance) ---

@@ -38,12 +38,36 @@ See `.env.example` for all variables and comments.
 
 ### Development
 
-Install dependencies (from `pyproject.toml`) and run tests:
+Install dependencies (from `pyproject.toml`):
 
 ```bash
 pip install -e .
-pytest
 ```
 
-For local runs, use the default local paths under `data/raw` (e.g. pre-download Overture/OSM fixtures), or set the dataset env vars / `RPG_OVERTURE_RELEASE_DATE` to pull from URLs. Set `RPG_LOCAL_OUTPUT_FORMAT=text` to write silver and gold as plain text for inspection.
+The **Makefile** is the main entry point for tests, local data pulls, and Airflow wrappers (no `pip install` needed for these if you run from repo root with `make`).
+
+#### Make commands
+
+| Command | Description |
+|--------|--------------|
+| `make` or `make help` | Show available targets and default params |
+| **Tests** | |
+| `make test` | Run all test groups (config, data, pipelines, io) |
+| `make test-config` | Run config tests only |
+| `make test-data` | Run data tests (conflation, overture, osm ingest) |
+| `make test-pipelines` | Run pipeline/DAG and local-runner tests |
+| `make test-io` | Run I/O (GCS) tests |
+| **Data pull** | |
+| `make pull-data` | Pull Overture + OSM, build silver & gold locally (defaults below) |
+| `make pull-data DATE=2024-03-01 SAMPLE_SIZE=5000` | Override Overture release date and row limit |
+| `make pull-data DATA_DIR=./my_data OSM_SOURCE=/path/to/osm.parquet` | Custom data dir and OSM source |
+| **Airflow** | |
+| `make airflow-trigger` | Trigger DAG `rpg_data_foundation` (uses same DATE / SAMPLE_SIZE) |
+| `make airflow-unpause` | Unpause the DAG |
+| `make airflow-list-dags` | List DAGs |
+| `make pull-and-trigger` | Run `pull-data` then `airflow-trigger` |
+
+**Data pull defaults:** `DATE=2024-01-01`, `SAMPLE_SIZE=10000`, `DATA_DIR=.`. Make does not persist these between runs—if you use custom values for `pull-data`, pass the same `DATE` and `SAMPLE_SIZE` when you run `airflow-trigger` (e.g. `make airflow-trigger DATE=2024-03-01 SAMPLE_SIZE=5000`), or use `make pull-and-trigger DATE=... SAMPLE_SIZE=...` to run both with the same params. For the triggered DAG run to use these values, set `RPG_OVERTURE_RELEASE_DATE` and `RPG_OVERTURE_SAMPLE_LIMIT` in the environment where Airflow workers run (e.g. Composer env vars).
+
+For local runs without Make, use the default local paths under `data/raw` (e.g. pre-download Overture/OSM fixtures), or set the dataset env vars / `RPG_OVERTURE_RELEASE_DATE` to pull from URLs. Set `RPG_LOCAL_OUTPUT_FORMAT=text` to write silver and gold as plain text for inspection.
 

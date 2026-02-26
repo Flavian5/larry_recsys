@@ -1,0 +1,113 @@
+"""Tests for the local pipeline runner (run_local)."""
+
+from pathlib import Path
+
+import pandas as pd
+
+from config.data_foundation import Config
+from pipelines.run_local import main
+from pipelines.airflow.dags.rpg_data_foundation_dag import (
+    task_build_gold,
+    task_build_silver,
+    task_overture_sample,
+    task_osm_extract,
+)
+
+
+def test_run_local_full_pipeline_with_local_sources(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Run the pipeline using local Parquet files (no network)."""
+    raw = tmp_path / "data" / "raw"
+    raw.mkdir(parents=True)
+    (raw / "overture").mkdir()
+    (raw / "osm").mkdir()
+
+    # Seed Overture-style and OSM-style Parquet so the DAG tasks can read them
+    overture_src = raw / "overture" / "places.parquet"
+    overture_df = pd.DataFrame(
+        [
+            {"id": "a", "gers_id": "G1", "lat": 37.78, "lon": -122.40},
+            {"id": "b", "gers_id": "G2", "lat": 37.79, "lon": -122.41},
+        ]
+    )
+    if "gers_id" not in overture_df.columns:
+        overture_df["gers_id"] = overture_df["id"]
+    overture_df.to_parquet(overture_src, index=False)
+
+    osm_src = raw / "osm" / "mini_region.parquet"
+    osm_df = pd.DataFrame(
+        [
+            {"osm_id": 1, "lat": 37.7801, "lon": -122.4001, "amenity": "cafe"},
+            {"osm_id": 2, "lat": 37.7902, "lon": -122.4102, "amenity": "restaurant"},
+        ]
+    )
+    osm_df.to_parquet(osm_src, index=False)
+
+    cfg = Config.for_test(
+        tmp_path,
+        overture_places=str(overture_src),
+        overture_sample_limit=100,
+        osm_extract=str(osm_src),
+    )
+
+    task_overture_sample(config=cfg)
+    task_osm_extract(config=cfg)
+    task_build_silver(config=cfg)
+    task_build_gold(config=cfg)
+
+    assert (cfg.local.raw / "overture_sample.parquet").exists()
+    assert (cfg.local.raw / "osm_pois.parquet").exists()
+    assert (cfg.local.silver / "venues.parquet").exists()
+    assert (cfg.local.gold / "venues.parquet").exists()
+    gold_df = pd.read_parquet(cfg.local.gold / "venues.parquet")
+    assert "gold_text" in gold_df.columns
+    assert len(gold_df) >= 1
+
+
+def test_run_local_cli_exits_zero_with_local_sources(tmp_path: Path) -> None:
+    """CLI runs and exits 0 when overture and osm sources are local files."""
+    raw = tmp_path / "data" / "raw"
+    raw.mkdir(parents=True)
+    (raw / "overture").mkdir()
+    (raw / "osm").mkdir()
+
+    overture_src = raw / "overture" / "places.parquet"
+    pd.DataFrame(
+        [{"id": "a", "gers_id": "G1", "lat": 37.78, "lon": -122.40}]
+    ).to_parquet(overture_src, index=False)
+
+    osm_src = raw / "osm" / "mini.parquet"
+    pd.DataFrame(
+        [{"osm_id": 1, "lat": 37.78, "lon": -122.40, "amenity": "cafe"}]
+    ).to_parquet(osm_src, index=False)
+
+    import sys
+    from io import StringIO
+
+    orig_argv = sys.argv
+    orig_stdout, orig_stderr = sys.stdout, sys.stderr
+    try:
+        sys.argv = [
+            "run_local",
+            "--date",
+            "2024-01-01",  # ignored when overture-source is set
+            "--sample-size",
+            "100",
+            "--data-dir",
+            str(tmp_path),
+            "--osm-source",
+            str(osm_src),
+            "--overture-source",
+            str(overture_src),
+        ]
+        sys.stdout = StringIO()
+        sys.stderr = StringIO()
+        exit_code = main()
+    finally:
+        sys.argv = orig_argv
+        sys.stdout = orig_stdout
+        sys.stderr = orig_stderr
+
+    assert exit_code == 0
+    assert (tmp_path / "data" / "gold" / "venues.parquet").exists()

@@ -181,6 +181,8 @@ def _format_amenities_list(amenities: object) -> str:
     """Format a single row's amenities list for vectorized use (one apply on list column)."""
     if amenities is None:
         return ""
+    if isinstance(amenities, np.ndarray):
+        amenities = amenities.tolist()
     if not isinstance(amenities, (list, tuple)):
         return str(amenities) if amenities else ""
     return ", ".join(str(a) for a in amenities if a)
