@@ -8,18 +8,19 @@ help:
 	@echo "Data foundation Makefile"
 	@echo ""
 	@echo "Tests:          make test  (or test-config, test-data, test-pipelines, test-io)"
-	@echo "Data pull:      make pull-data [DATE=2024-01-01] [SAMPLE_SIZE=10000] [DATA_DIR=.] [OSM_SOURCE=path]"
+	@echo "Data pull:      make pull-data [DATE=2026-01-21] [SAMPLE_SIZE=10000] [DATA_DIR=.] [OSM_SOURCE=path]"
 	@echo "Airflow:        make airflow-trigger  (same DATE/SAMPLE_SIZE); airflow-unpause; airflow-list-dags"
 	@echo "Convenience:    make pull-and-trigger  (pull then trigger DAG)"
 	@echo ""
-	@echo "Defaults: DATE=2024-01-01  SAMPLE_SIZE=10000  DATA_DIR=."
+	@echo "Defaults: DATE=2026-01-21  SAMPLE_SIZE=10000  DATA_DIR=."
 
 PYTHON    ?= python
 PYTEST    := $(PYTHON) -m pytest
 RUN_LOCAL := PYTHONPATH=src $(PYTHON) -m pipelines.run_local
 
-# Data pull defaults (override via: make pull-data DATE=2024-03-01 SAMPLE_SIZE=5000)
-DATE        ?= 2024-01-01
+# Data pull defaults (override via: make pull-data DATE=2026-01-21 SAMPLE_SIZE=5000)
+# Overture release is YYYY-MM-DD.0; plain DATE gets .0 appended. List with: aws s3 ls s3://overturemaps-us-west-2/release/ --no-sign-request
+DATE        ?= 2026-01-21
 SAMPLE_SIZE ?= 10000
 DATA_DIR    ?= .
 OSM_SOURCE  ?=

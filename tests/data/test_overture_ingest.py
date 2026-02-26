@@ -10,22 +10,36 @@ from data.overture_ingest import (
 
 
 def test_build_overture_parquet_url_shape() -> None:
+    """Default use_s3=True returns s3:// so DuckDB can list/read (glob over https 404s)."""
     url = build_overture_parquet_url("2024-01-01")
-    assert url.startswith(
-        "https://overturemaps-us-west-2.s3.amazonaws.com/release/2024-01-01/"
-    )
+    assert url.startswith("s3://overturemaps-us-west-2/")
+    assert "/release/2024-01-01.0/" in url
     assert "theme=places" in url
     assert "type=place" in url
     assert url.endswith("*.parquet")
 
 
-def test_build_overture_parquet_url_custom_base() -> None:
+def test_build_overture_parquet_url_appends_dot_zero_for_plain_date() -> None:
+    """Plain YYYY-MM-DD gets .0 suffix (Overture release format)."""
+    url = build_overture_parquet_url("2024-11-14")
+    assert "/release/2024-11-14.0/" in url
+
+
+def test_build_overture_parquet_url_preserves_existing_version_suffix() -> None:
+    """If release already contains a dot (e.g. 2024-11-14.0), do not double-append."""
+    url = build_overture_parquet_url("2024-03-12.0")
+    assert "/release/2024-03-12.0/" in url
+
+
+def test_build_overture_parquet_url_use_s3_false_returns_https() -> None:
+    """use_s3=False returns https URL (e.g. for docs)."""
     url = build_overture_parquet_url(
         "2024-03-12",
         base_url="https://custom-overture.example.com",
+        use_s3=False,
     )
     assert url == (
-        "https://custom-overture.example.com/release/2024-03-12/theme=places/type=place/*.parquet"
+        "https://custom-overture.example.com/release/2024-03-12.0/theme=places/type=place/*.parquet"
     )
 
 

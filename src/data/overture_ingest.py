@@ -8,7 +8,9 @@ import duckdb
 import pandas as pd
 from pydantic import BaseModel, model_validator
 
+# HTTPS base (for docs); DuckDB reads via S3 protocol so we use S3 URI for remote pulls
 DEFAULT_OVERTURE_PLACES_BASE = "https://overturemaps-us-west-2.s3.amazonaws.com"
+DEFAULT_OVERTURE_S3_BUCKET = "overturemaps-us-west-2"
 
 
 class BBox(BaseModel, frozen=True):
@@ -44,18 +46,36 @@ class _PathLike(Protocol):
 def build_overture_parquet_url(
     release_date: str,
     base_url: str | None = None,
+    *,
+    use_s3: bool = True,
 ) -> str:
     """
-    Build the public HTTP URL pattern for Overture Places GeoParquet.
+    Build the Overture Places GeoParquet source path for DuckDB.
 
-    base_url defaults to RPG_OVERTURE_PLACES_BASE_URL env var, then
-    DEFAULT_OVERTURE_PLACES_BASE. Pass explicitly (e.g. from config) to avoid env.
+    use_s3=True (default): returns s3://bucket/release/... so DuckDB can list
+    and read multiple parquet files. use_s3=False: returns https://... (for
+    docs; single-URL GET with a glob does not work on S3).
+
+    base_url (when use_s3=False) defaults to RPG_OVERTURE_PLACES_BASE_URL then
+    DEFAULT_OVERTURE_PLACES_BASE. For S3, bucket is from env or
+    DEFAULT_OVERTURE_S3_BUCKET.
+
+    Overture release identifiers use a version suffix (e.g. 2024-11-14.0). If
+    release_date is a plain date (YYYY-MM-DD with no dot), .0 is appended.
     """
     release = release_date.strip()
+    if release and "." not in release:
+        release = f"{release}.0"
+    path_suffix = f"release/{release}/theme=places/type=place/*.parquet"
+    if use_s3:
+        bucket = os.getenv(
+            "RPG_OVERTURE_S3_BUCKET", DEFAULT_OVERTURE_S3_BUCKET
+        ).strip().rstrip("/")
+        return f"s3://{bucket}/{path_suffix}"
     base = base_url or os.getenv(
         "RPG_OVERTURE_PLACES_BASE_URL", DEFAULT_OVERTURE_PLACES_BASE
     )
-    return f"{base.rstrip('/')}/release/{release}/theme=places/type=place/*.parquet"
+    return f"{base.rstrip('/')}/{path_suffix}"
 
 
 def sample_overture_places_by_bbox(
@@ -81,9 +101,12 @@ def sample_overture_places_by_bbox(
 
     con = duckdb.connect()
     try:
-        if source.strip().lower().startswith("http"):
+        src = source.strip()
+        if src.lower().startswith("http") or src.startswith("s3://"):
             con.execute("INSTALL httpfs")
             con.execute("LOAD httpfs")
+            if src.startswith("s3://"):
+                con.execute("SET s3_region='us-west-2'")
         con.execute(
             """
             CREATE TABLE overture_src AS
