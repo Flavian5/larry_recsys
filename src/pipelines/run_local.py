@@ -68,6 +68,12 @@ def _parse_args() -> argparse.Namespace:
         default="parquet",
         help="Output format for silver/gold (default: parquet).",
     )
+    p.add_argument(
+        "--only",
+        type=str,
+        default="",
+        help="Comma-separated task names to run only (e.g. overture_sample, osm_extract). If not set, runs full pipeline.",
+    )
     return p.parse_args()
 
 
@@ -84,20 +90,37 @@ def main() -> int:
         output_format=args.output_format,
     )
 
-    tasks = [
+    all_tasks = [
         ("overture_sample", task_overture_sample),
         ("osm_extract", task_osm_extract),
         ("build_silver", task_build_silver),
         ("build_gold", task_build_gold),
         ("cleanup_raw_temp", task_cleanup_raw_temp),
     ]
+    only_names = [s.strip() for s in args.only.split(",") if s.strip()]
+    if only_names:
+        name_to_task = dict(all_tasks)
+        tasks = []
+        for name in only_names:
+            if name not in name_to_task:
+                print(
+                    f"Unknown task: {name}. Valid: {list(name_to_task)}",
+                    file=sys.stderr,
+                )
+                return 1
+            tasks.append((name, name_to_task[name]))
+    else:
+        tasks = all_tasks
     for name, task_fn in tasks:
         print(f"\n--- {name} ---", flush=True)
         t0 = time.perf_counter()
         try:
             task_fn(config=cfg)
         except Exception as e:
-            print(f"Task {name} failed after {time.perf_counter() - t0:.1f}s: {e}", file=sys.stderr)
+            print(
+                f"Task {name} failed after {time.perf_counter() - t0:.1f}s: {e}",
+                file=sys.stderr,
+            )
             return 1
         elapsed = time.perf_counter() - t0
         print(f"{name} finished in {elapsed:.1f}s", flush=True)

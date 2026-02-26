@@ -75,15 +75,24 @@ def task_osm_extract(
     **_context: object,
 ) -> None:
     cfg = config or get_validated_config()
-    data_root = _default_data_dir()
-    raw_osm_dir = data_root / "raw" / "osm"
+    raw_osm_dir = cfg.local.raw / "osm"
     raw_osm_dir.mkdir(parents=True, exist_ok=True)
 
     source = (
         cfg.datasets.osm_extract
         if cfg.datasets.osm_extract
-        else raw_osm_dir / "mini_region.parquet"
+        else str((cfg.local.raw / "osm" / "mini_region.parquet").resolve())
     )
+    if not any(source.startswith(p) for p in ("http://", "https://", "s3://", "gs://")):
+        source_path = Path(source)
+        if not source_path.exists():
+            default_relative = "data/raw/osm/mini_region.parquet"
+            raise FileNotFoundError(
+                f"OSM extract not found: {source_path}\n"
+                "Provide an OSM Parquet file by either:\n"
+                "  1. Set RPG_OSM_EXTRACT_URI (or --osm-source) to a path or URI,\n"
+                f"  2. Place a file at {default_relative}"
+            )
     temp_dir = _raw_osm_temp(cfg)
     temp_dir.mkdir(parents=True, exist_ok=True)
     output = temp_dir / "osm_pois.parquet"
@@ -189,4 +198,11 @@ with DAG(
         python_callable=task_cleanup_raw_temp,
     )
 
-    overture_sample >> osm_extract >> build_silver >> build_gold >> upload_gold_to_gcs >> cleanup_raw_temp
+    (
+        overture_sample
+        >> osm_extract
+        >> build_silver
+        >> build_gold
+        >> upload_gold_to_gcs
+        >> cleanup_raw_temp
+    )

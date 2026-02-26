@@ -68,9 +68,11 @@ def build_overture_parquet_url(
         release = f"{release}.0"
     path_suffix = f"release/{release}/theme=places/type=place/*.parquet"
     if use_s3:
-        bucket = os.getenv(
-            "RPG_OVERTURE_S3_BUCKET", DEFAULT_OVERTURE_S3_BUCKET
-        ).strip().rstrip("/")
+        bucket = (
+            os.getenv("RPG_OVERTURE_S3_BUCKET", DEFAULT_OVERTURE_S3_BUCKET)
+            .strip()
+            .rstrip("/")
+        )
         return f"s3://{bucket}/{path_suffix}"
     base = base_url or os.getenv(
         "RPG_OVERTURE_PLACES_BASE_URL", DEFAULT_OVERTURE_PLACES_BASE
@@ -101,7 +103,9 @@ def sample_overture_places_by_bbox(
 
     src = source.strip()
     if src.startswith("s3://"):
-        print(f"[overture] Reading from S3 (this may take several minutes)...", flush=True)
+        print(
+            f"[overture] Reading from S3 (this may take several minutes)...", flush=True
+        )
         print(f"[overture] Source: {src}", flush=True)
     else:
         print(f"[overture] Reading from local: {src}", flush=True)

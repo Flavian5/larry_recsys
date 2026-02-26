@@ -168,7 +168,10 @@ def conflate_parquet(
     overture_df = pd.read_parquet(overture_path)
     print(f"[conflation] Loading OSM: {osm_path}", flush=True)
     osm_df = pd.read_parquet(osm_path)
-    print(f"[conflation] Conflating ({len(overture_df)} overture, {len(osm_df)} osm) ...", flush=True)
+    print(
+        f"[conflation] Conflating ({len(overture_df)} overture, {len(osm_df)} osm) ...",
+        flush=True,
+    )
     silver_df = spatial_conflate(overture_df, osm_df, radius_m)
     print(f"[conflation] Silver: {len(silver_df)} rows", flush=True)
 
