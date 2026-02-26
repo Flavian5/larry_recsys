@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 from typing import Iterable, Protocol
 
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
@@ -176,38 +177,48 @@ def conflate_parquet(
     return out
 
 
-def format_gold_record(row: pd.Series) -> str:
+def _format_amenities_list(amenities: object) -> str:
+    """Format a single row's amenities list for vectorized use (one apply on list column)."""
+    if amenities is None:
+        return ""
+    if not isinstance(amenities, (list, tuple)):
+        return str(amenities) if amenities else ""
+    return ", ".join(str(a) for a in amenities if a)
+
+
+def _gold_text_vectorized(df: pd.DataFrame) -> pd.Series:
     """
-    Format a single Silver row into a natural language description.
-
-    Expected columns:
-    - name
-    - category
-    - city (optional; may be empty)
-    - osm_amenities (list-like; optional)
-    - lat, lon
+    Build gold_text column with vectorized ops. Uses one .apply only for the
+    list column (osm_amenities); rest is vectorized for better performance on large datasets.
     """
-    name = row.get("name", "")
-    category = row.get("category", "")
-    city = row.get("city", "")
-    lat = float(row.get("lat"))
-    lon = float(row.get("lon"))
-    amenities = row.get("osm_amenities") or []
+    name = df.get("name", pd.Series("", index=df.index)).fillna("").astype(str)
+    category = df.get("category", pd.Series("", index=df.index)).fillna("").astype(str)
+    city = (
+        df.get("city", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
+    )
+    lat = pd.to_numeric(df["lat"], errors="coerce").fillna(0)
+    lon = pd.to_numeric(df["lon"], errors="coerce").fillna(0)
+    osm_amenities = df.get(
+        "osm_amenities",
+        pd.Series([[]] * len(df), index=df.index),
+    )
 
-    parts = [f"{name} is a {category}"]
-    city_str = str(city).strip()
-    if city_str:
-        parts[0] += f" in {city_str}"
-    sentence1 = parts[0] + "."
+    sentence1 = name + " is a " + category
+    has_city = city != ""
+    sentence1 = sentence1 + np.where(has_city, " in " + city, "")
+    sentence1 = sentence1 + "."
 
-    tags = [str(a) for a in amenities if a]
-    if tags:
-        tag_str = ", ".join(tags)
-        sentence2 = f"It features {tag_str} and is located at ({lat:.5f}, {lon:.5f})."
-    else:
-        sentence2 = f"It is located at ({lat:.5f}, {lon:.5f})."
+    amenities_str = osm_amenities.apply(_format_amenities_list)
+    # .5f formatting: 2 column-wise .apply (cheap); only list column is per-row
+    lat_s = lat.round(5).apply("{:.5f}".format)
+    lon_s = lon.round(5).apply("{:.5f}".format)
+    located_at = "(" + lat_s + ", " + lon_s + ")"
+    has_amenities = amenities_str.str.len() > 0
+    sentence2 = (
+        "It features " + amenities_str + " and is located at " + located_at + "."
+    ).where(has_amenities, "It is located at " + located_at + ".")
 
-    return f"{sentence1} {sentence2}"
+    return sentence1 + " " + sentence2
 
 
 def _read_silver(path: Path) -> pd.DataFrame:
@@ -226,11 +237,12 @@ def silver_to_gold(
     """
     Convert a Silver file (Parquet or JSONL) into Gold with `gold_text`.
 
-    output_format: "parquet" (default) or "text". When "text", writes one gold_text line per row for local inspection.
+    Uses vectorized string ops for large datasets; only the list column (osm_amenities)
+    uses a single .apply. output_format: "parquet" (default) or "text".
     """
     silver_df = _read_silver(Path(silver_path))
     gold_df = silver_df.copy()
-    gold_df["gold_text"] = gold_df.apply(format_gold_record, axis=1)
+    gold_df["gold_text"] = _gold_text_vectorized(gold_df)
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -1,17 +1,15 @@
-import os
 from pathlib import Path
 
 import pytest
 
 from config.data_foundation import (
     DEFAULT_OVERTURE_PLACES_BASE,
-    DataFoundationConfig,
+    Config,
     build_dated_gcs_path,
     build_gcs_uris,
     build_local_paths,
     detect_env,
     gold_venues_filename,
-    load_config,
     silver_venues_filename,
 )
 
@@ -79,7 +77,7 @@ def test_build_dated_gcs_path_without_components() -> None:
     assert path == "gs://larry-rpg-dev-gold/2024-01-01"
 
 
-def test_load_config_wires_env_and_paths(
+def test_config_from_env_wires_env_and_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("RPG_ENV", "composer-dev")
@@ -88,8 +86,8 @@ def test_load_config_wires_env_and_paths(
     monkeypatch.setenv("RPG_GCS_BUCKET_SILVER", "larry-rpg-dev-silver")
     monkeypatch.setenv("RPG_GCS_BUCKET_GOLD", "larry-rpg-dev-gold")
 
-    cfg = load_config(base_dir=tmp_path)
-    assert isinstance(cfg, DataFoundationConfig)
+    cfg = Config.from_env(base_dir=tmp_path)
+    assert isinstance(cfg, Config)
     assert cfg.env == "composer-dev"
     assert cfg.gcp_project == "larry-rpg-dev"
     assert cfg.local.raw == tmp_path / "data" / "raw"
@@ -102,30 +100,60 @@ def test_load_config_wires_env_and_paths(
     assert cfg.datasets.osm_extract == ""
 
 
-def test_load_config_dataset_uris_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_from_env_dataset_uris(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "RPG_OVERTURE_PLACES_URI", "https://example.com/overture/*.parquet"
     )
     monkeypatch.setenv("RPG_OSM_EXTRACT_URI", "https://example.com/osm.parquet")
-    cfg = load_config(base_dir=Path("."))
+    cfg = Config.from_env(base_dir=Path("."))
     assert cfg.datasets.overture_places == "https://example.com/overture/*.parquet"
     assert cfg.datasets.osm_extract == "https://example.com/osm.parquet"
 
 
-def test_load_config_overture_places_base_from_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_config_from_env_overture_base(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "RPG_OVERTURE_PLACES_BASE_URL", "https://custom-overture.example.com"
     )
-    cfg = load_config(base_dir=Path("."))
+    cfg = Config.from_env(base_dir=Path("."))
     assert cfg.datasets.overture_places_base == "https://custom-overture.example.com"
 
 
-def test_load_config_local_output_format_text(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_from_env_local_output_format_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("RPG_LOCAL_OUTPUT_FORMAT", "text")
-    cfg = load_config(base_dir=Path("."))
+    cfg = Config.from_env(base_dir=Path("."))
     assert cfg.local_output_format == "text"
+
+
+def test_config_for_test_injectable(tmp_path: Path) -> None:
+    """Config.for_test() builds a valid config without env vars (for DI in tests)."""
+    cfg = Config.for_test(tmp_path)
+    assert cfg.env == "local"
+    assert cfg.local.raw == tmp_path / "data" / "raw"
+    assert cfg.gcs.raw == ""
+    assert cfg.silver_venues_filename() == "venues.parquet"
+    assert cfg.gold_venues_filename() == "venues.parquet"
+
+    cfg_text = Config.for_test(tmp_path, output_format="text")
+    assert cfg_text.silver_venues_filename() == "venues.jsonl"
+    assert cfg_text.gold_venues_filename() == "venues.txt"
+
+
+def test_config_for_test_overrides(tmp_path: Path) -> None:
+    cfg = Config.for_test(
+        tmp_path,
+        env="composer-dev",
+        gcp_project="my-project",
+        gcs_raw="gs://r",
+        gcs_silver="gs://s",
+        gcs_gold="gs://g",
+    )
+    assert cfg.env == "composer-dev"
+    assert cfg.gcp_project == "my-project"
+    assert cfg.gcs.raw == "gs://r"
+    assert cfg.gcs.silver == "gs://s"
+    assert cfg.gcs.gold == "gs://g"
 
 
 def test_silver_gold_venues_filename() -> None:

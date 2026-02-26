@@ -3,8 +3,8 @@ from pathlib import Path
 import pandas as pd
 
 from data.conflation import (
+    _gold_text_vectorized,
     conflate_parquet,
-    format_gold_record,
     silver_to_gold,
     spatial_conflate,
     standardize_osm,
@@ -107,20 +107,55 @@ def test_conflate_parquet_roundtrip(tmp_path: Path) -> None:
     assert df.iloc[0]["osm_ids"] == [99]
 
 
-def test_format_gold_record_happy_path() -> None:
-    row = pd.Series(
-        {
-            "name": "Golden Curry",
-            "category": "restaurant",
-            "city": "San Francisco",
-            "osm_amenities": ["restaurant", "outdoor_seating"],
-            "lat": 37.78,
-            "lon": -122.40,
-        }
+def test_gold_text_vectorized_single_row() -> None:
+    """_gold_text_vectorized produces expected gold text for one row with amenities and city."""
+    df = pd.DataFrame(
+        [
+            {
+                "name": "Golden Curry",
+                "category": "restaurant",
+                "city": "San Francisco",
+                "osm_amenities": ["restaurant", "outdoor_seating"],
+                "lat": 37.78,
+                "lon": -122.40,
+            }
+        ]
     )
-    text = format_gold_record(row)
+    result = _gold_text_vectorized(df)
+    assert len(result) == 1
+    text = result.iloc[0]
     assert "Golden Curry is a restaurant in San Francisco." in text
     assert "It features restaurant, outdoor_seating and is located at" in text
+
+
+def test_gold_text_vectorized_multiple_rows() -> None:
+    """_gold_text_vectorized produces correct gold text per row (with and without city/amenities)."""
+    df = pd.DataFrame(
+        [
+            {
+                "name": "Cafe A",
+                "category": "cafe",
+                "city": "SF",
+                "osm_amenities": ["cafe"],
+                "lat": 37.78,
+                "lon": -122.40,
+            },
+            {
+                "name": "Bar B",
+                "category": "bar",
+                "city": "",
+                "osm_amenities": [],
+                "lat": 37.79,
+                "lon": -122.41,
+            },
+        ]
+    )
+    result = _gold_text_vectorized(df)
+    assert len(result) == 2
+    assert "Cafe A is a cafe in SF." in result.iloc[0]
+    assert "It features cafe and is located at" in result.iloc[0]
+    assert "Bar B is a bar." in result.iloc[1]
+    assert "It is located at (37.79000, -122.41000)." in result.iloc[1]
 
 
 def test_silver_to_gold_roundtrip(tmp_path: Path) -> None:

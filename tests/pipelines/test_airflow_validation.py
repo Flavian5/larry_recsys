@@ -1,4 +1,4 @@
-"""Tests for Airflow task validation (get_validated_config)."""
+"""Tests for Airflow task validation (get_validated_config) and config injection."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from config.data_foundation import DataFoundationConfig
+from config.data_foundation import Config
 from pipelines.airflow.validation import get_validated_config
 
 
@@ -21,24 +21,21 @@ def test_get_validated_config_returns_config_when_valid(
 
     cfg = get_validated_config(base_dir=tmp_path)
 
-    assert isinstance(cfg, DataFoundationConfig)
+    assert isinstance(cfg, Config)
     assert cfg.env == "local"
     assert cfg.local.raw == tmp_path / "data" / "raw"
 
 
 def test_get_validated_config_raises_runtime_error_on_validation_error() -> None:
-    # Trigger a real ValidationError (wrong type for env)
     try:
-        DataFoundationConfig.model_validate(
-            {"env": 123, "local": {}, "gcs": {}, "datasets": {}}
-        )
+        Config.model_validate({"env": 123, "local": {}, "gcs": {}, "datasets": {}})
     except ValidationError as e:
         validation_error = e
     else:
         pytest.fail("Expected ValidationError from invalid env type")
 
     with patch(
-        "pipelines.airflow.validation.load_config",
+        "pipelines.airflow.validation.Config.from_env",
         side_effect=validation_error,
     ):
         with pytest.raises(RuntimeError) as exc_info:

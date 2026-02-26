@@ -1,6 +1,16 @@
+from pathlib import Path
+
 from airflow.models import DAG
 
-from pipelines.airflow.dags.rpg_data_foundation_dag import dag
+from config.data_foundation import Config
+from pipelines.airflow.dags.rpg_data_foundation_dag import (
+    dag,
+    task_build_gold,
+    task_build_silver,
+    task_osm_extract,
+    task_overture_sample,
+    task_upload_gold_to_gcs,
+)
 
 
 def test_dag_imports_and_has_expected_id() -> None:
@@ -28,3 +38,16 @@ def test_dag_has_expected_tasks_and_order() -> None:
     assert build_silver in osm_extract.downstream_list
     assert build_gold in build_silver.downstream_list
     assert upload_gold_to_gcs in build_gold.downstream_list
+
+
+def test_tasks_use_injected_config_when_provided(tmp_path: Path) -> None:
+    """When config is passed, tasks use it instead of calling get_validated_config()."""
+    from unittest.mock import patch
+
+    cfg = Config.for_test(tmp_path)
+    with patch(
+        "pipelines.airflow.dags.rpg_data_foundation_dag.get_validated_config"
+    ) as m:
+        # Tasks receive config=cfg so they must not call get_validated_config
+        task_upload_gold_to_gcs(config=cfg)  # no-op when GCS sync disabled
+        m.assert_not_called()

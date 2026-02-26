@@ -3,14 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from os import getenv
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
-from config.data_foundation import (
-    DataFoundationConfig,
-    gold_venues_filename,
-    silver_venues_filename,
-)
+from config.data_foundation import Config
 from pipelines.airflow.validation import get_validated_config
 from data.conflation import conflate_parquet, silver_to_gold
 from data.osm_ingest import extract_osm_pois
@@ -21,13 +18,16 @@ from data.overture_ingest import (
 )
 from src.io import gcs as gcs_io
 
+if TYPE_CHECKING:
+    pass  # Config used for type hints
+
 
 def _default_data_dir() -> Path:
     return Path(".") / "data"
 
 
-def _overture_source(cfg: DataFoundationConfig, data_root: Path) -> str:
-    """Resolve Overture Places source: config URI, URL from release date + base, or local path."""
+def _overture_source(cfg: Config, data_root: Path) -> str:
+    """Resolve Overture Places source from config or env."""
     if cfg.datasets.overture_places:
         return cfg.datasets.overture_places
     release = getenv("RPG_OVERTURE_RELEASE_DATE", "").strip()
@@ -38,8 +38,12 @@ def _overture_source(cfg: DataFoundationConfig, data_root: Path) -> str:
     return str(data_root / "raw" / "overture" / "places.parquet")
 
 
-def task_overture_sample(**_context) -> None:
-    cfg = get_validated_config()
+def task_overture_sample(
+    *,
+    config: Config | None = None,
+    **_context: object,
+) -> None:
+    cfg = config or get_validated_config()
     data_root = _default_data_dir()
     raw_dir = data_root / "raw" / "overture"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -50,8 +54,12 @@ def task_overture_sample(**_context) -> None:
     sample_overture_places_by_bbox(source, bbox, output)
 
 
-def task_osm_extract(**_context) -> None:
-    cfg = get_validated_config()
+def task_osm_extract(
+    *,
+    config: Config | None = None,
+    **_context: object,
+) -> None:
+    cfg = config or get_validated_config()
     data_root = _default_data_dir()
     raw_dir = data_root / "raw" / "osm"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -65,36 +73,46 @@ def task_osm_extract(**_context) -> None:
     extract_osm_pois(source, output)
 
 
-def task_build_silver(**_context) -> None:
-    cfg = get_validated_config()
+def task_build_silver(
+    *,
+    config: Config | None = None,
+    **_context: object,
+) -> None:
+    cfg = config or get_validated_config()
     overture_path = cfg.local.raw / "overture_sample.parquet"
     osm_path = cfg.local.raw / "osm_pois.parquet"
-    fmt = cfg.local_output_format
-    silver_path = cfg.local.silver / silver_venues_filename(fmt)
+    silver_path = cfg.local.silver / cfg.silver_venues_filename()
     conflate_parquet(
-        overture_path, osm_path, silver_path, radius_m=50.0, output_format=fmt
+        overture_path,
+        osm_path,
+        silver_path,
+        radius_m=50.0,
+        output_format=cfg.local_output_format,
     )
 
 
-def task_build_gold(**_context) -> None:
-    cfg = get_validated_config()
-    fmt = cfg.local_output_format
-    silver_path = cfg.local.silver / silver_venues_filename(fmt)
-    gold_path = cfg.local.gold / gold_venues_filename(fmt)
-    silver_to_gold(silver_path, gold_path, output_format=fmt)
+def task_build_gold(
+    *,
+    config: Config | None = None,
+    **_context: object,
+) -> None:
+    cfg = config or get_validated_config()
+    silver_path = cfg.local.silver / cfg.silver_venues_filename()
+    gold_path = cfg.local.gold / cfg.gold_venues_filename()
+    silver_to_gold(silver_path, gold_path, output_format=cfg.local_output_format)
 
 
-def task_upload_gold_to_gcs(**_context) -> None:
-    """
-    Optional helper to sync locally generated Gold data to GCS.
-
-    Controlled via RPG_ENABLE_LOCAL_GCS_SYNC and RPG_GCS_GOLD_URI.
-    """
+def task_upload_gold_to_gcs(
+    *,
+    config: Config | None = None,
+    **_context: object,
+) -> None:
+    """Optional: sync local Gold to GCS. Controlled via RPG_ENABLE_LOCAL_GCS_SYNC and RPG_GCS_GOLD_URI."""
     if getenv("RPG_ENABLE_LOCAL_GCS_SYNC", "").lower() not in {"1", "true", "yes", "y"}:
         return
 
-    cfg = get_validated_config()
-    local_gold = cfg.local.gold / gold_venues_filename(cfg.local_output_format)
+    cfg = config or get_validated_config()
+    local_gold = cfg.local.gold / cfg.gold_venues_filename()
     gcs_uri = getenv("RPG_GCS_GOLD_URI", cfg.gcs.gold)
     if not gcs_uri:
         return
