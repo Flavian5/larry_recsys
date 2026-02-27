@@ -16,21 +16,24 @@ def test_dag_imports_and_has_expected_id() -> None:
 
 def test_dag_has_expected_tasks_and_order() -> None:
     task_ids = [t.task_id for t in dag.tasks]
-    assert task_ids == [
-        "overture_sample",
-        "osm_extract",
-        "build_silver",
+    assert sorted(task_ids) == [
         "build_gold",
+        "build_silver",
         "cleanup_raw_temp",
+        "fetch_osm",
+        "osm_extract",
+        "overture_sample",
     ]
 
     overture_sample = dag.get_task("overture_sample")
+    fetch_osm = dag.get_task("fetch_osm")
     osm_extract = dag.get_task("osm_extract")
     build_silver = dag.get_task("build_silver")
     build_gold = dag.get_task("build_gold")
     cleanup_raw_temp = dag.get_task("cleanup_raw_temp")
 
-    assert osm_extract in overture_sample.downstream_list
+    assert build_silver in overture_sample.downstream_list
+    assert osm_extract in fetch_osm.downstream_list
     assert build_silver in osm_extract.downstream_list
     assert build_gold in build_silver.downstream_list
     assert cleanup_raw_temp in build_gold.downstream_list

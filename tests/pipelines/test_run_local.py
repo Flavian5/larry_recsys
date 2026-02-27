@@ -1,6 +1,5 @@
 """Tests for the local pipeline runner (run_local)."""
 
-import importlib.util
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -15,15 +14,6 @@ from pipelines.airflow.dags.rpg_data_foundation_dag import (
     task_overture_sample,
     task_osm_extract,
 )
-
-# Load fetch_osm script for integration test (mocked Overpass)
-_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[2] / "scripts" / "fetch_osm_mini_region.py"
-)
-_spec = importlib.util.spec_from_file_location("fetch_osm_mini_region", _SCRIPT_PATH)
-_fetch_osm = importlib.util.module_from_spec(_spec) if _spec and _spec.loader else None
-if _spec and _spec.loader:
-    _spec.loader.exec_module(_fetch_osm)
 
 
 def test_run_local_full_pipeline_with_local_sources(
@@ -126,22 +116,17 @@ def test_run_local_cli_exits_zero_with_local_sources(tmp_path: Path) -> None:
 
 
 def test_run_local_with_default_osm_path_after_fetch(tmp_path: Path) -> None:
-    """Simulate make pull-data: fetch script writes mini_region.parquet, then pipeline uses default OSM path."""
-    if _fetch_osm is None:
-        return
+    """Simulate make pull-data: pipeline runs fetch_osm (mocked) + osm_extract, then build_silver, build_gold."""
     raw = tmp_path / "data" / "raw"
     raw.mkdir(parents=True)
     (raw / "overture").mkdir()
     (raw / "osm").mkdir()
 
-    # Overture: local source
     overture_src = raw / "overture" / "places.parquet"
     pd.DataFrame(
         [{"id": "a", "gers_id": "G1", "lat": 37.78, "lon": -122.40}]
     ).to_parquet(overture_src, index=False)
 
-    # OSM: run fetch script (mocked) to create default mini_region.parquet
-    osm_default = raw / "osm" / "mini_region.parquet"
     fake_overpass = {
         "elements": [
             {
@@ -160,29 +145,22 @@ def test_run_local_with_default_osm_path_after_fetch(tmp_path: Path) -> None:
             },
         ]
     }
-    # Script uses data.osm_ingest.fetch_osm_pois_via_overpass -> overpass_query
     with patch("data.osm_ingest.overpass_query", return_value=fake_overpass):
-        with patch.object(sys, "argv", ["fetch_osm", "-o", str(osm_default)]):
-            assert _fetch_osm.main() == 0
-    assert osm_default.exists()
-
-    # Run pipeline with overture-source only (no osm-source) so it uses default data/raw/osm/mini_region.parquet
-    with patch.object(
-        sys,
-        "argv",
-        [
-            "run_local",
-            "--date",
-            "2024-01-01",
-            "--sample-size",
-            "10",
-            "--data-dir",
-            str(tmp_path),
-            "--overture-source",
-            str(overture_src),
-        ],
-    ):
-        exit_code = main()
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "run_local",
+                "--date",
+                "2024-01-01",
+                "--sample-size",
+                "10",
+                "--data-dir",
+                str(tmp_path),
+                "--overture-source",
+                str(overture_src),
+            ],
+        ):
+            exit_code = main()
     assert exit_code == 0
-    # cleanup_raw_temp removes temp files after success; gold is the final output
     assert (tmp_path / "data" / "gold" / "venues.parquet").exists()

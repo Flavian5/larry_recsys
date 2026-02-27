@@ -32,7 +32,7 @@ make pull-data               # full pipeline (runs pull-osm if needed, then Over
 | `make test-data` | Data tests (conflation, overture, osm ingest) |
 | `make test-pipelines` | Pipeline/DAG and local-runner tests |
 | `make test-io` | I/O (GCS) tests |
-| `make test-scripts` | Script tests (e.g. fetch_osm_mini_region) |
+| `make test-scripts` | Script / placeholder tests |
 | **Data (separate steps)** | |
 | `make pull-overture` | Sample Overture Places only → `data/raw/overture/temp/overture_sample.parquet` |
 | `make pull-osm` | Fetch OSM (Overpass) + extract → `data/raw/osm/temp/osm_pois.parquet` (bbox from `RPG_BBOX` in `.env`) |
@@ -86,7 +86,6 @@ See `.env.example` for all variables and comments.
 - `src/pipelines/airflow/dags/rpg_data_foundation_na_dag.py`: Composer-only tiled DAG for North America (one task per H3 tile, then merge and gold).
 - `src/pipelines/run_local.py`: Local pipeline runner (invoked by Makefile with `--only` for single-task runs).
 - `src/io/gcs.py`: GCS I/O wrapper (upload, download) used by the pipeline and tiled DAG.
-- `scripts/fetch_osm_mini_region.py`: Thin CLI that calls `src/data/osm_ingest.fetch_osm_pois_via_overpass`; uses `RPG_BBOX` and `RPG_OVERPASS_URL` from `.env` (used by `make pull-osm`).
 - `tests/`: Pytest suite.
 
 ---
@@ -101,14 +100,10 @@ RPG_BBOX=37.2,-122.52,37.82,-122.35 make pull-osm  # override bbox for this run
 make pull-osm DATA_DIR=./my_data                 # write under my_data/data/raw/osm/
 ```
 
-Or run the fetch script then the pipeline’s osm_extract step yourself (from repo root, `PYTHONPATH=src`):
+To run only the OSM steps via the pipeline (same config as `make pull-osm`):  
+`PYTHONPATH=src python -m pipelines.run_local --date 2026-01-21 --data-dir . --only fetch_osm,osm_extract`
 
-```bash
-PYTHONPATH=src python scripts/fetch_osm_mini_region.py -o data/raw/osm/mini_region.parquet
-PYTHONPATH=src python -m pipelines.run_local --date 2026-01-21 --data-dir . --only osm_extract
-```
-
-Without `--bbox`, the script uses `RPG_BBOX` from `.env`. It calls [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) and writes Parquet with `osm_id`, `lat`, `lon`, `amenity`, `cuisine`, `dog_friendly`. For larger regions or full Geofabrik extracts, use a `.osm.pbf` and convert to Parquet (e.g. with [osmium](https://osmcode.org/osmium-tool/) or pyosmium), then point the pipeline at that file via `OSM_SOURCE`.
+Fetch uses [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) and writes Parquet with `osm_id`, `lat`, `lon`, `amenity`, `cuisine`, `dog_friendly`. For larger regions or full Geofabrik extracts, use a `.osm.pbf` and convert to Parquet (e.g. with [osmium](https://osmcode.org/osmium-tool/) or pyosmium), then point the pipeline at that file via `OSM_SOURCE`.
 
 ---
 

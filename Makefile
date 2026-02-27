@@ -68,8 +68,7 @@ pull-overture:
 # Fetch OSM via Overpass (bbox from .env RPG_BBOX) then extract to osm_pois.parquet. Override: RPG_BBOX=s,w,n,e make pull-osm
 pull-osm:
 	@echo "Pulling OSM (fetch + extract)..."
-	PYTHONPATH=src $(PYTHON) scripts/fetch_osm_mini_region.py -o "$(DATA_DIR)/data/raw/osm/mini_region.parquet"
-	$(RUN_LOCAL) --date "$(DATE)" --data-dir "$(DATA_DIR)" --only osm_extract
+	$(RUN_LOCAL) --date "$(DATE)" --data-dir "$(DATA_DIR)" --only fetch_osm,osm_extract
 
 # Build silver only (conflate overture_sample + osm_pois -> data/silver/venues.*). Requires raw temp files.
 build-silver:

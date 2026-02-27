@@ -10,7 +10,7 @@ from airflow.providers.standard.operators.python import PythonOperator
 from config.data_foundation import Config
 from pipelines.airflow.validation import get_validated_config
 from data.conflation import conflate_parquet, silver_to_gold
-from data.osm_ingest import extract_osm_pois
+from data.osm_ingest import extract_osm_pois, fetch_osm_pois_via_overpass
 from data.overture_ingest import (
     BBox,
     build_overture_parquet_url,
@@ -70,6 +70,26 @@ def task_overture_sample(
     output = temp_dir / "overture_sample.parquet"
     sample_overture_places_by_bbox(
         source, bbox, output, limit=cfg.overture_sample_limit
+    )
+
+
+def task_fetch_osm(
+    *,
+    config: Config | None = None,
+    **_context: object,
+) -> None:
+    """Fetch OSM POIs via Overpass (bbox and overpass_url from config), write to raw/osm/mini_region.parquet. No-op when RPG_OSM_EXTRACT_URI is set."""
+    cfg = config or get_validated_config()
+    if cfg.datasets.osm_extract:
+        return
+    raw_osm_dir = cfg.local.raw / "osm"
+    raw_osm_dir.mkdir(parents=True, exist_ok=True)
+    output = raw_osm_dir / "mini_region.parquet"
+    bbox_swne = (cfg.bbox_miny, cfg.bbox_minx, cfg.bbox_maxy, cfg.bbox_maxx)
+    fetch_osm_pois_via_overpass(
+        bbox_swne,
+        output,
+        overpass_url=cfg.datasets.overpass_url,
     )
 
 
@@ -161,6 +181,11 @@ with DAG(
         python_callable=task_overture_sample,
     )
 
+    fetch_osm = PythonOperator(
+        task_id="fetch_osm",
+        python_callable=task_fetch_osm,
+    )
+
     osm_extract = PythonOperator(
         task_id="osm_extract",
         python_callable=task_osm_extract,
@@ -181,4 +206,6 @@ with DAG(
         python_callable=task_cleanup_raw_temp,
     )
 
-    (overture_sample >> osm_extract >> build_silver >> build_gold >> cleanup_raw_temp)
+    (overture_sample >> build_silver)
+    (fetch_osm >> osm_extract >> build_silver)
+    (build_silver >> build_gold >> cleanup_raw_temp)
