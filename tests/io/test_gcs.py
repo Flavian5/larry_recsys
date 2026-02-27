@@ -2,7 +2,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from src.io import gcs
+
+from rpg_io import gcs
 
 
 def test_parse_gcs_uri_happy_path() -> None:
@@ -40,7 +41,9 @@ def test_sync_local_to_gcs_uses_client_and_bucket(tmp_path: Path) -> None:
     fake_bucket = SimpleNamespace(blob=fake_blob_factory)
     fake_client = SimpleNamespace(bucket=lambda name: fake_bucket)
 
-    result_uri = gcs.sync_local_to_gcs(local, "gs://test-bucket/path/in/bucket.txt", client=fake_client)  # type: ignore[arg-type]
+    result_uri = gcs.sync_local_to_gcs(
+        local, "gs://test-bucket/path/in/bucket.txt", client=fake_client
+    )  # type: ignore[arg-type]
 
     assert result_uri == "gs://test-bucket/path/in/bucket.txt"
     assert uploaded["filename"] == str(local)

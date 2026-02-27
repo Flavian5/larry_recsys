@@ -34,10 +34,13 @@ def test_get_validated_config_raises_runtime_error_on_validation_error() -> None
     else:
         pytest.fail("Expected ValidationError from invalid env type")
 
-    with patch(
-        "pipelines.airflow.validation.Config.from_env",
-        side_effect=validation_error,
-    ), pytest.raises(RuntimeError) as exc_info:
+    with (
+        patch(
+            "pipelines.airflow.validation.Config.from_env",
+            side_effect=validation_error,
+        ),
+        pytest.raises(RuntimeError) as exc_info,
+    ):
         get_validated_config()
 
     assert "Config validation failed" in str(exc_info.value)

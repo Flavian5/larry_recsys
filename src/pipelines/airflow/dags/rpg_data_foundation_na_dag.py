@@ -20,7 +20,7 @@ from data.na_tiles import get_na_tiles
 from data.overture_ingest import build_overture_parquet_url
 from data.tiled_conflation import run_conflate_for_tile
 from pipelines.airflow.validation import get_validated_config
-from src.io import gcs as gcs_io
+from rpg_io import gcs as gcs_io
 
 
 def _get_tiles() -> list[str]:
