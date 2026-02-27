@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from collections import Counter
 from typing import Iterable, Protocol
 
+import h3
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
@@ -89,13 +91,75 @@ def _haversine_m(
     return r * c
 
 
+def _h3_cell(lat: float, lon: float, res: int) -> str:
+    """Return H3 cell (hex string) at given resolution. lat/lon in degrees."""
+    return h3.latlng_to_cell(lat, lon, res)
+
+
+def _h3_ring_cells(cell: str, k: int = 1) -> set[str]:
+    """Return cell and its k-ring (cell + neighbors within distance k)."""
+    return h3.grid_disk(cell, k)
+
+
+def _aggregate_candidates_to_silver(
+    o_df: pd.DataFrame,
+    candidates: list[tuple[object, object, object, object]],
+) -> pd.DataFrame:
+    """Build one row per Overture place with lists of osm_ids, osm_amenities, has_dog_friendly.
+    candidates: list of (gers_id, osm_id, amenity, dog_friendly).
+    """
+    from collections import defaultdict
+
+    # gers_id -> (osm_ids, amenities, any_dog_friendly)
+    agg: dict[object, tuple[list[object], list[object], bool]] = defaultdict(
+        lambda: ([], [], False)
+    )
+    for gers_id, osm_id, amenity, dog_friendly in candidates:
+        osm_ids, amenities, any_dog = agg[gers_id]
+        osm_ids.append(osm_id)
+        if amenity is not None and (isinstance(amenity, str) or pd.notna(amenity)):
+            amenities.append(amenity)
+        elif amenity is not None:
+            amenities.append(amenity)
+        if dog_friendly:
+            agg[gers_id] = (osm_ids, amenities, True)
+        else:
+            agg[gers_id] = (osm_ids, amenities, any_dog)
+
+    records: list[dict] = []
+    for _, o_row in o_df.iterrows():
+        gers_id = o_row["gers_id"]
+        osm_ids, amenities, any_dog = agg.get(gers_id, ([], [], False))
+        rec: dict = {
+            "gers_id": gers_id,
+            "lat": float(o_row["lat"]),
+            "lon": float(o_row["lon"]),
+            "osm_ids": osm_ids,
+            "osm_amenities": amenities,
+            "has_dog_friendly": any_dog,
+        }
+        if "city" in o_row:
+            rec["city"] = o_row["city"]
+        records.append(rec)
+
+    df = pd.DataFrame.from_records(records)
+    if "has_dog_friendly" in df.columns:
+        df["has_dog_friendly"] = df["has_dog_friendly"].astype(bool)
+    return df
+
+
 def spatial_conflate(
     overture_df: pd.DataFrame,
     osm_df: pd.DataFrame,
     radius_m: float,
+    *,
+    h3_res: int = 8,
 ) -> pd.DataFrame:
     """
     Spatially join Overture centroids to nearby OSM POIs within `radius_m`.
+
+    Uses H3 bucketing (res 7 or 8 for POIs) and k-ring(1) for boundary safety;
+    candidate pairs are then filtered by haversine distance.
 
     Output schema (minimal for this POC):
     - gers_id
@@ -107,40 +171,67 @@ def spatial_conflate(
     o_df = standardize_overture(overture_df)
     os_df = standardize_osm(osm_df)
 
-    records: list[dict] = []
-    for _, o_row in o_df.iterrows():
-        o_lat = float(o_row["lat"])
-        o_lon = float(o_row["lon"])
-        matched_osm_ids: list[object] = []
-        matched_amenities: list[object] = []
-        any_dog_friendly = False
+    # 1. Add primary H3 cell to Overture
+    o_df = o_df.copy()
+    o_df["_h3_cell"] = o_df.apply(
+        lambda r: _h3_cell(float(r["lat"]), float(r["lon"]), h3_res), axis=1
+    )
 
-        for _, s_row in os_df.iterrows():
-            dist = _haversine_m(o_lat, o_lon, float(s_row["lat"]), float(s_row["lon"]))
-            if dist <= radius_m:
-                matched_osm_ids.append(s_row["osm_id"])
-                if "amenity" in s_row:
-                    matched_amenities.append(s_row["amenity"])
-                if "dog_friendly" in s_row and bool(s_row["dog_friendly"]):
-                    any_dog_friendly = True
+    # 2. OSM: add primary cell, then explode to one row per cell in k-ring(1)
+    os_df = os_df.copy()
+    os_df["_h3_primary"] = os_df.apply(
+        lambda r: _h3_cell(float(r["lat"]), float(r["lon"]), h3_res), axis=1
+    )
+    osm_exploded_rows: list[dict] = []
+    for _, row in os_df.iterrows():
+        row_dict = row.to_dict()
+        primary = row_dict.pop("_h3_primary")
+        for cell in _h3_ring_cells(primary, 1):
+            r = {**row_dict, "_h3_cell": cell}
+            osm_exploded_rows.append(r)
+    osm_exploded = (
+        pd.DataFrame(osm_exploded_rows) if osm_exploded_rows else pd.DataFrame()
+    )
 
-        rec: dict = {
-            "gers_id": o_row["gers_id"],
-            "lat": o_lat,
-            "lon": o_lon,
-            "osm_ids": matched_osm_ids,
-            "osm_amenities": matched_amenities,
-            "has_dog_friendly": any_dog_friendly,
-        }
-        if "city" in o_row:
-            rec["city"] = o_row["city"]
-        records.append(rec)
+    if osm_exploded.empty:
+        # No OSM data: return one row per Overture with empty matches
+        return _aggregate_candidates_to_silver(o_df, [])
 
-    df = pd.DataFrame.from_records(records)
-    # Ensure `has_dog_friendly` is a plain Python bool dtype where possible
-    if "has_dog_friendly" in df.columns:
-        df["has_dog_friendly"] = df["has_dog_friendly"].astype(bool)
-    return df
+    # 3. Join on H3 cell -> candidate pairs (Overture lat/lon, OSM gets lat_osm/lon_osm)
+    merged = o_df.merge(
+        osm_exploded,
+        on="_h3_cell",
+        how="left",
+        suffixes=("", "_osm"),
+    )
+    merged = merged.dropna(subset=["osm_id"])  # keep only rows that had a match in join
+
+    if merged.empty:
+        return _aggregate_candidates_to_silver(o_df, [])
+
+    # 4. Haversine filter: use Overture (lat, lon) vs OSM (lat_osm, lon_osm)
+    merged["_dist_m"] = merged.apply(
+        lambda r: _haversine_m(
+            float(r["lat"]),
+            float(r["lon"]),
+            float(r["lat_osm"]),
+            float(r["lon_osm"]),
+        ),
+        axis=1,
+    )
+    within = merged[merged["_dist_m"] <= radius_m].copy()
+    within = within.drop_duplicates(subset=["gers_id", "osm_id"])
+
+    # 5. Aggregate to one row per Overture place
+    candidates = list(
+        zip(
+            within["gers_id"],
+            within["osm_id"],
+            within.get("amenity", pd.Series([None] * len(within))),
+            within.get("dog_friendly", pd.Series([False] * len(within))),
+        )
+    )
+    return _aggregate_candidates_to_silver(o_df, candidates)
 
 
 class SilverPaths(BaseModel, frozen=True):
@@ -168,12 +259,107 @@ def conflate_parquet(
     overture_df = pd.read_parquet(overture_path)
     print(f"[conflation] Loading OSM: {osm_path}", flush=True)
     osm_df = pd.read_parquet(osm_path)
+    print("[conflation] Inputs:", flush=True)
+    print(f"  - overture rows: {len(overture_df)}", flush=True)
+    if "gers_id" in overture_df.columns:
+        try:
+            n_unique = (
+                overture_df["gers_id"]
+                .astype(str)
+                .str.strip()
+                .str.upper()
+                .nunique(dropna=True)
+            )
+            print(f"  - overture unique gers_id: {n_unique}", flush=True)
+        except Exception:
+            pass
+    print(f"  - osm rows: {len(osm_df)}", flush=True)
+    if "osm_id" in osm_df.columns:
+        try:
+            n_unique = osm_df["osm_id"].nunique(dropna=True)
+            print(f"  - osm unique osm_id: {n_unique}", flush=True)
+        except Exception:
+            pass
+    print(f"[conflation] Conflating with radius_m={radius_m} ...", flush=True)
+    silver_df = spatial_conflate(overture_df, osm_df, radius_m)
     print(
-        f"[conflation] Conflating ({len(overture_df)} overture, {len(osm_df)} osm) ...",
+        f"[conflation] Silver: {len(silver_df)} rows (1 row per Overture place)",
         flush=True,
     )
-    silver_df = spatial_conflate(overture_df, osm_df, radius_m)
-    print(f"[conflation] Silver: {len(silver_df)} rows", flush=True)
+
+    # Match coverage summary (kept lightweight; avoids per-row logging)
+    if "osm_ids" in silver_df.columns:
+
+        def _list_len(x: object) -> int:
+            if x is None:
+                return 0
+            if isinstance(x, np.ndarray):
+                return int(len(x))
+            if isinstance(x, (list, tuple)):
+                return int(len(x))
+            # Unexpected scalar (shouldn't happen); treat as single match
+            return 1
+
+        match_counts = silver_df["osm_ids"].map(_list_len)
+        n_overture = int(len(silver_df))
+        n_matched_overture = int((match_counts > 0).sum())
+        pct = (100.0 * n_matched_overture / n_overture) if n_overture else 0.0
+        print("[conflation] Match coverage:", flush=True)
+        print(
+            f"  - overture rows with ≥1 OSM match: {n_matched_overture}/{n_overture} ({pct:.1f}%)",
+            flush=True,
+        )
+        if n_overture:
+            try:
+                p50 = float(match_counts.quantile(0.50))
+                p90 = float(match_counts.quantile(0.90))
+                p99 = float(match_counts.quantile(0.99))
+                print(
+                    "  - matches per overture row: "
+                    f"mean={match_counts.mean():.2f}, p50={p50:.0f}, p90={p90:.0f}, p99={p99:.0f}, max={int(match_counts.max())}",
+                    flush=True,
+                )
+            except Exception:
+                pass
+
+        # Unique OSM POIs that got attached anywhere
+        try:
+            matched_osm_ids: set[object] = set()
+            for ids in silver_df["osm_ids"]:
+                if ids is None:
+                    continue
+                if isinstance(ids, np.ndarray):
+                    ids = ids.tolist()
+                if isinstance(ids, (list, tuple)):
+                    matched_osm_ids.update(ids)
+                else:
+                    matched_osm_ids.add(ids)
+            n_unique_matched_osm = len(matched_osm_ids)
+            print(
+                f"  - unique OSM POIs matched to any Overture row: {n_unique_matched_osm}",
+                flush=True,
+            )
+        except Exception:
+            pass
+
+    if "osm_amenities" in silver_df.columns:
+        try:
+            c: Counter[str] = Counter()
+            for ams in silver_df["osm_amenities"]:
+                if ams is None:
+                    continue
+                if isinstance(ams, np.ndarray):
+                    ams = ams.tolist()
+                if isinstance(ams, (list, tuple)):
+                    c.update(str(a) for a in ams if a)
+                else:
+                    if ams:
+                        c.update([str(ams)])
+            if c:
+                top = ", ".join(f"{k}({v})" for k, v in c.most_common(10))
+                print(f"[conflation] Top matched OSM amenities: {top}", flush=True)
+        except Exception:
+            pass
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)

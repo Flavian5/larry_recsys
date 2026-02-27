@@ -16,7 +16,6 @@ from data.overture_ingest import (
     build_overture_parquet_url,
     sample_overture_places_by_bbox,
 )
-from src.io import gcs as gcs_io
 
 if TYPE_CHECKING:
     pass  # Config used for type hints
@@ -123,26 +122,10 @@ def task_build_gold(
     **_context: object,
 ) -> None:
     cfg = config or get_validated_config()
+    cfg.local.gold.mkdir(parents=True, exist_ok=True)
     silver_path = cfg.local.silver / cfg.silver_venues_filename()
     gold_path = cfg.local.gold / cfg.gold_venues_filename()
     silver_to_gold(silver_path, gold_path, output_format=cfg.local_output_format)
-
-
-def task_upload_gold_to_gcs(
-    *,
-    config: Config | None = None,
-    **_context: object,
-) -> None:
-    """Optional: sync local Gold to GCS. Controlled via RPG_ENABLE_LOCAL_GCS_SYNC and RPG_GCS_GOLD_URI."""
-    if getenv("RPG_ENABLE_LOCAL_GCS_SYNC", "").lower() not in {"1", "true", "yes", "y"}:
-        return
-
-    cfg = config or get_validated_config()
-    local_gold = cfg.local.gold / cfg.gold_venues_filename()
-    gcs_uri = getenv("RPG_GCS_GOLD_URI", cfg.gcs.gold)
-    if not gcs_uri:
-        return
-    gcs_io.sync_local_to_gcs(local_gold, gcs_uri)
 
 
 def task_cleanup_raw_temp(
@@ -163,7 +146,7 @@ def task_cleanup_raw_temp(
 
 with DAG(
     dag_id="rpg_data_foundation",
-    start_date=datetime(2024, 1, 1),
+    start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
     tags=["rpg", "data-foundation"],
@@ -188,21 +171,9 @@ with DAG(
         python_callable=task_build_gold,
     )
 
-    upload_gold_to_gcs = PythonOperator(
-        task_id="upload_gold_to_gcs",
-        python_callable=task_upload_gold_to_gcs,
-    )
-
     cleanup_raw_temp = PythonOperator(
         task_id="cleanup_raw_temp",
         python_callable=task_cleanup_raw_temp,
     )
 
-    (
-        overture_sample
-        >> osm_extract
-        >> build_silver
-        >> build_gold
-        >> upload_gold_to_gcs
-        >> cleanup_raw_temp
-    )
+    (overture_sample >> osm_extract >> build_silver >> build_gold >> cleanup_raw_temp)

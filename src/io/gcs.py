@@ -33,6 +33,25 @@ def get_client() -> storage.Client:
     return storage.Client()
 
 
+def download_to_path(
+    gcs_uri: str,
+    local_path: _PathLike,
+    client: storage.Client | None = None,
+) -> Path:
+    """
+    Download a GCS object to a local file path.
+    Returns the local path.
+    """
+    path = Path(local_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    bucket_name, blob_name = parse_gcs_uri(gcs_uri)
+    client = client or get_client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.download_to_filename(str(path))
+    return path
+
+
 def sync_local_to_gcs(
     local_path: _PathLike,
     gcs_uri: str,

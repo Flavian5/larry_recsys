@@ -5,7 +5,7 @@ from airflow.models import DAG
 from config.data_foundation import Config
 from pipelines.airflow.dags.rpg_data_foundation_dag import (
     dag,
-    task_upload_gold_to_gcs,
+    task_cleanup_raw_temp,
 )
 
 
@@ -21,7 +21,6 @@ def test_dag_has_expected_tasks_and_order() -> None:
         "osm_extract",
         "build_silver",
         "build_gold",
-        "upload_gold_to_gcs",
         "cleanup_raw_temp",
     ]
 
@@ -29,14 +28,12 @@ def test_dag_has_expected_tasks_and_order() -> None:
     osm_extract = dag.get_task("osm_extract")
     build_silver = dag.get_task("build_silver")
     build_gold = dag.get_task("build_gold")
-    upload_gold_to_gcs = dag.get_task("upload_gold_to_gcs")
     cleanup_raw_temp = dag.get_task("cleanup_raw_temp")
 
     assert osm_extract in overture_sample.downstream_list
     assert build_silver in osm_extract.downstream_list
     assert build_gold in build_silver.downstream_list
-    assert upload_gold_to_gcs in build_gold.downstream_list
-    assert cleanup_raw_temp in upload_gold_to_gcs.downstream_list
+    assert cleanup_raw_temp in build_gold.downstream_list
 
 
 def test_tasks_use_injected_config_when_provided(tmp_path: Path) -> None:
@@ -47,6 +44,5 @@ def test_tasks_use_injected_config_when_provided(tmp_path: Path) -> None:
     with patch(
         "pipelines.airflow.dags.rpg_data_foundation_dag.get_validated_config"
     ) as m:
-        # Tasks receive config=cfg so they must not call get_validated_config
-        task_upload_gold_to_gcs(config=cfg)  # no-op when GCS sync disabled
+        task_cleanup_raw_temp(config=cfg)
         m.assert_not_called()

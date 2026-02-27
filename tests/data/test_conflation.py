@@ -75,6 +75,42 @@ def test_spatial_conflate_matches_within_radius() -> None:
     assert bool(silver.iloc[1]["has_dog_friendly"]) is False
 
 
+def test_spatial_conflate_k_ring_recovers_boundary_pair() -> None:
+    """K-ring(1) should recover a pair that would be missed with a single-cell join.
+    Overture and OSM points in adjacent H3 cells but within radius_m should still match.
+    """
+    import h3
+
+    # Pick a point and a neighbor cell center so they are in different cells but close
+    lat, lon = 37.78, -122.40
+    cell = h3.latlng_to_cell(lat, lon, 8)
+    # Neighbor cell center: OSM point in adjacent cell, so single-cell join would miss it
+    neighbors = [c for c in h3.grid_disk(cell, 1) if c != cell]
+    assert len(neighbors) >= 1
+    nb = neighbors[0]
+    lat_nb, lon_nb = h3.cell_to_latlng(nb)
+
+    overture_df = pd.DataFrame(
+        [{"gers_id": "O1", "lat": lat, "lon": lon, "city": "SF"}]
+    )
+    osm_df = pd.DataFrame(
+        [
+            {
+                "osm_id": 42,
+                "lat": lat_nb,
+                "lon": lon_nb,
+                "amenity": "pub",
+                "dog_friendly": False,
+            }
+        ]
+    )
+    silver = spatial_conflate(overture_df, osm_df, radius_m=2000.0)
+    assert list(silver["gers_id"]) == ["O1"]
+    # Should match via k-ring (neighbor cell) if within 500m
+    assert len(silver.iloc[0]["osm_ids"]) >= 1
+    assert 42 in silver.iloc[0]["osm_ids"]
+
+
 def test_conflate_parquet_roundtrip(tmp_path: Path) -> None:
     overture_path = tmp_path / "overture.parquet"
     osm_path = tmp_path / "osm.parquet"

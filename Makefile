@@ -11,6 +11,7 @@ help:
 	@echo "Data (separate): make pull-overture   - sample Overture only (S3 -> data/raw/overture/temp)"
 	@echo "                 make fetch-osm      - download OSM only (Overpass -> data/raw/osm/mini_region.parquet)"
 	@echo "                 make extract-osm   - run OSM extraction only (mini_region -> data/raw/osm/temp/osm_pois)"
+	@echo "                 make build-silver  - conflate raw -> silver only; make build-gold - silver -> gold only"
 	@echo "Data (full):    make pull-data [DATE=...] [SAMPLE_SIZE=10000] [DATA_DIR=.] [OSM_BBOX=...] [OSM_SOURCE=path]"
 	@echo "                (If OSM_SOURCE unset, fetches OSM first via fetch-osm, then runs full pipeline.)"
 	@echo "Airflow:        make airflow-trigger  (same DATE/SAMPLE_SIZE); airflow-unpause; airflow-list-dags"
@@ -60,7 +61,7 @@ test-scripts:
 # OSM: download (Overpass -> mini_region.parquet) then extract (normalize to POI schema -> osm_pois.parquet).
 # ------------------------------------------------------------------------------
 
-.PHONY: pull-data pull-overture fetch-osm extract-osm
+.PHONY: pull-data pull-overture fetch-osm extract-osm build-silver build-gold
 
 # Sample Overture Places only (reads from S3 or --overture-source, writes data/raw/overture/temp/overture_sample.parquet).
 pull-overture:
@@ -77,6 +78,16 @@ extract-osm:
 	@echo "Running OSM extraction only..."
 	$(RUN_LOCAL) --date "$(DATE)" --data-dir "$(DATA_DIR)" --only osm_extract \
 		$(if $(OSM_SOURCE),--osm-source "$(OSM_SOURCE)",)
+
+# Build silver only (conflate overture_sample + osm_pois -> data/silver/venues.*). Requires raw temp files.
+build-silver:
+	@echo "Building silver only..."
+	$(RUN_LOCAL) --date "$(DATE)" --data-dir "$(DATA_DIR)" --only build_silver
+
+# Build gold only (silver -> data/gold/venues.*). Requires silver to exist.
+build-gold:
+	@echo "Building gold only..."
+	$(RUN_LOCAL) --date "$(DATE)" --data-dir "$(DATA_DIR)" --only build_gold
 
 # Full pipeline: optionally fetch OSM if OSM_SOURCE unset, then Overture sample + OSM extract + silver + gold.
 pull-data:

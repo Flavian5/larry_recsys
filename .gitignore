@@ -223,3 +223,6 @@ __marimo__/
 
 # Temp data files
 .tmp/
+
+# Keep data files out of git
+data/
