@@ -81,13 +81,21 @@ def main() -> int:
     args = _parse_args()
     base_dir = args.data_dir.resolve()
 
-    cfg = Config.for_test(
-        base_dir,
-        overture_release_date=args.date.strip() if not args.overture_source else "",
-        overture_sample_limit=args.sample_size,
-        overture_places=args.overture_source.strip(),
-        osm_extract=args.osm_source.strip() or "",
-        output_format=args.output_format,
+    cfg = Config.from_env(base_dir)
+    cfg = cfg.model_copy(
+        update={
+            "overture_release_date": (
+                args.date.strip() if not args.overture_source else ""
+            ),
+            "overture_sample_limit": args.sample_size,
+            "datasets": cfg.datasets.model_copy(
+                update={
+                    "overture_places": args.overture_source.strip(),
+                    "osm_extract": args.osm_source.strip() or "",
+                }
+            ),
+            "local_output_format": args.output_format,
+        }
     )
 
     all_tasks = [

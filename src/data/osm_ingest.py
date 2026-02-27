@@ -1,9 +1,84 @@
 from __future__ import annotations
 
+import json
+import urllib.request
 from pathlib import Path
 from typing import Iterable, Protocol
 
 import pandas as pd
+
+
+def overpass_query(
+    bbox_swne: tuple[float, float, float, float],
+    *,
+    overpass_url: str = "https://overpass-api.de/api/interpreter",
+    timeout_sec: int = 120,
+) -> dict:
+    """Query Overpass API for nodes with amenity in bbox. bbox_swne = (south, west, north, east)."""
+    south, west, north, east = bbox_swne
+    query = f"""
+    [out:json][timeout:{timeout_sec}];
+    node["amenity"]({south},{west},{north},{east});
+    out body;
+    """
+    req = urllib.request.Request(
+        overpass_url,
+        data=query.encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        return json.load(resp)
+
+
+def nodes_to_rows(elements: list) -> list[dict]:
+    """Convert Overpass node elements to rows with osm_id, lat, lon, amenity, cuisine, dog_friendly."""
+    rows = []
+    for el in elements:
+        if el.get("type") != "node":
+            continue
+        lat = el.get("lat")
+        lon = el.get("lon")
+        if lat is None or lon is None:
+            continue
+        tags = el.get("tags") or {}
+        dog = tags.get("dog_friendly") or tags.get("dogs") or None
+        rows.append(
+            {
+                "osm_id": el["id"],
+                "lat": float(lat),
+                "lon": float(lon),
+                "amenity": tags.get("amenity"),
+                "cuisine": tags.get("cuisine"),
+                "dog_friendly": (
+                    str(dog).lower() in ("yes", "true", "1") if dog else None
+                ),
+            }
+        )
+    return rows
+
+
+def fetch_osm_pois_via_overpass(
+    bbox_swne: tuple[float, float, float, float],
+    output_path: Path | str,
+    *,
+    overpass_url: str = "https://overpass-api.de/api/interpreter",
+) -> Path:
+    """
+    Fetch OSM POIs for a bbox via Overpass API and write Parquet.
+    bbox_swne = (south, west, north, east). Same schema as extract_osm_pois input.
+    """
+    data = overpass_query(bbox_swne, overpass_url=overpass_url)
+    elements = data.get("elements") or []
+    rows = nodes_to_rows(elements)
+    if not rows:
+        raise ValueError(
+            "No nodes in bbox; try a larger area or check coordinates."
+        )
+    dst = Path(output_path)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_parquet(dst, index=False)
+    return dst
 
 
 class _PathLike(Protocol):

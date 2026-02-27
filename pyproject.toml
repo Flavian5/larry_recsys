@@ -43,6 +43,6 @@ ignore = ["E501"]  # line length handled by black
 [tool.black]
 target-version = ["py311"]
 line-length = 88
-include = "\.pyi?$"
+include = "\\.pyi?$"
 src = ["src", "tests", "scripts"]
 

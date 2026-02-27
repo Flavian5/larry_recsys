@@ -144,6 +144,18 @@ def test_config_from_env_overture_sample_limit_ignored_when_invalid(
     assert cfg.overture_sample_limit is None
 
 
+def test_config_from_env_bbox_and_overpass(monkeypatch: pytest.MonkeyPatch) -> None:
+    """RPG_BBOX (south,west,north,east) and RPG_OVERPASS_URL are applied."""
+    monkeypatch.setenv("RPG_BBOX", "37.1,-122.6,37.9,-122.2")
+    monkeypatch.setenv("RPG_OVERPASS_URL", "https://overpass.example.com/api")
+    cfg = Config.from_env(base_dir=Path("."))
+    assert cfg.bbox_miny == 37.1
+    assert cfg.bbox_minx == -122.6
+    assert cfg.bbox_maxy == 37.9
+    assert cfg.bbox_maxx == -122.2
+    assert cfg.datasets.overpass_url == "https://overpass.example.com/api"
+
+
 def test_config_for_test_injectable(tmp_path: Path) -> None:
     """Config.for_test() builds a valid config without env vars (for DI in tests)."""
     cfg = Config.for_test(tmp_path)

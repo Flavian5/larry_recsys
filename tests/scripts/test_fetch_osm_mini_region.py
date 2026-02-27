@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
-import json
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
+
+from data.osm_ingest import nodes_to_rows
 
 # Load the script as a module (it lives outside src/)
 _SCRIPT_DIR = Path(__file__).resolve().parents[2] / "scripts"
@@ -38,7 +40,7 @@ def test_nodes_to_rows_builds_expected_columns() -> None:
         },
         {"type": "node", "id": 103, "lat": 37.0, "lon": -122.0},
     ]
-    rows = fetch_osm.nodes_to_rows(elements)
+    rows = nodes_to_rows(elements)
     assert len(rows) == 3
     assert rows[0]["osm_id"] == 101
     assert rows[0]["lat"] == 37.78
@@ -55,15 +57,14 @@ def test_nodes_to_rows_skips_non_nodes_and_missing_coords() -> None:
         {"type": "way", "id": 1},
         {"type": "node", "id": 2},
     ]
-    rows = fetch_osm.nodes_to_rows(elements)
+    rows = nodes_to_rows(elements)
     assert len(rows) == 0  # way skipped; node has no lat/lon
 
 
 def test_main_writes_parquet_compatible_with_osm_ingest(tmp_path: Path) -> None:
     """Script output can be read by extract_osm_pois (pipeline OSM step)."""
-    import sys
-
     out_parquet = tmp_path / "osm" / "mini_region.parquet"
+    out_parquet.parent.mkdir(parents=True, exist_ok=True)
     fake_response = {
         "elements": [
             {
@@ -75,7 +76,7 @@ def test_main_writes_parquet_compatible_with_osm_ingest(tmp_path: Path) -> None:
             },
         ]
     }
-    with patch.object(fetch_osm, "overpass_query", return_value=fake_response):
+    with patch("data.osm_ingest.overpass_query", return_value=fake_response):
         with patch.object(
             sys,
             "argv",
@@ -118,9 +119,7 @@ def test_main_writes_parquet_compatible_with_osm_ingest(tmp_path: Path) -> None:
 
 
 def test_main_exits_nonzero_when_no_elements(tmp_path: Path) -> None:
-    import sys
-
-    with patch.object(fetch_osm, "overpass_query", return_value={"elements": []}):
+    with patch("data.osm_ingest.overpass_query", return_value={"elements": []}):
         with patch.object(
             sys, "argv", ["fetch_osm", "-o", str(tmp_path / "out.parquet")]
         ):

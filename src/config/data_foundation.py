@@ -2,7 +2,7 @@
 Centralized config for the data foundation pipeline.
 
 Use Config.from_env() in production/DAGs; use Config.for_test() in tests and inject
-into tasks for dependency injection.
+into tasks for dependency injection. Loads .env via python-dotenv when present.
 """
 
 from __future__ import annotations
@@ -15,6 +15,10 @@ from pydantic import BaseModel, Field
 
 EnvKind = Literal["local", "composer-dev", "composer-prod"]
 OutputFormat = Literal["parquet", "text"]
+
+# Default bbox (south, west, north, east) used when RPG_BBOX is not set. Same for Overture and OSM.
+DEFAULT_BBOX_SWNE = (37.2, -122.52, 37.82, -122.35)
+DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
 
 class LocalPaths(BaseModel, frozen=True):
@@ -40,11 +44,13 @@ class DatasetUris(BaseModel, frozen=True):
     overture_places_base: str = DEFAULT_OVERTURE_PLACES_BASE
     overture_places: str = ""
     osm_extract: str = ""
+    overpass_url: str = DEFAULT_OVERPASS_URL
 
 
 class Config(BaseModel, frozen=True):
     """
     Data foundation config. Create via Config.from_env() or Config.for_test().
+    bbox_* are in (minx, maxx, miny, maxy) = (lon_min, lon_max, lat_min, lat_max); same for Overture and OSM.
     """
 
     env: EnvKind
@@ -53,15 +59,25 @@ class Config(BaseModel, frozen=True):
     gcs: GCSUris
     local_output_format: OutputFormat = Field(default="parquet")
     datasets: DatasetUris
-    # Local / run overrides: Overture release date and row limit for sampling
     overture_release_date: str = Field(default="")
     overture_sample_limit: int | None = Field(default=None)
+    # Shared bbox for Overture sample and OSM fetch (minx, maxx, miny, maxy)
+    bbox_minx: float = Field(default=-122.52)
+    bbox_maxx: float = Field(default=-122.35)
+    bbox_miny: float = Field(default=37.2)
+    bbox_maxy: float = Field(default=37.82)
 
     # --- Factory: from environment (production/DAG) ---
 
     @classmethod
     def from_env(cls, base_dir: str | Path = ".") -> Config:
-        """Build config from environment. Raises ValidationError if invalid."""
+        """Build config from environment. Loads .env if present. Raises ValidationError if invalid."""
+        try:
+            from dotenv import load_dotenv
+
+            load_dotenv(Path(base_dir) / ".env")
+        except ImportError:
+            pass
         env = _detect_env()
         project = _get_env_var("RPG_GCP_PROJECT")
         local_paths = _build_local_paths(base_dir)
@@ -73,6 +89,7 @@ class Config(BaseModel, frozen=True):
         overture_sample_limit = (
             int(sample_limit) if sample_limit and sample_limit.isdigit() else None
         )
+        minx, maxx, miny, maxy = _parse_bbox_from_env()
         return cls(
             env=env,
             gcp_project=project,
@@ -82,6 +99,10 @@ class Config(BaseModel, frozen=True):
             datasets=datasets,
             overture_release_date=release_date,
             overture_sample_limit=overture_sample_limit,
+            bbox_minx=minx,
+            bbox_maxx=maxx,
+            bbox_miny=miny,
+            bbox_maxy=maxy,
         )
 
     # --- Factory: for tests (inject this into tasks) ---
@@ -100,8 +121,13 @@ class Config(BaseModel, frozen=True):
         overture_places_base: str = DEFAULT_OVERTURE_PLACES_BASE,
         overture_places: str = "",
         osm_extract: str = "",
+        overpass_url: str = DEFAULT_OVERPASS_URL,
         overture_release_date: str = "",
         overture_sample_limit: int | None = None,
+        bbox_minx: float = DEFAULT_BBOX_SWNE[1],
+        bbox_maxx: float = DEFAULT_BBOX_SWNE[3],
+        bbox_miny: float = DEFAULT_BBOX_SWNE[0],
+        bbox_maxy: float = DEFAULT_BBOX_SWNE[2],
     ) -> Config:
         """Build a valid config with overrides for testing. No env vars required."""
         base = Path(base_dir)
@@ -115,6 +141,7 @@ class Config(BaseModel, frozen=True):
             overture_places_base=overture_places_base,
             overture_places=overture_places,
             osm_extract=osm_extract,
+            overpass_url=overpass_url,
         )
         return cls(
             env=env,
@@ -125,6 +152,10 @@ class Config(BaseModel, frozen=True):
             datasets=datasets,
             overture_release_date=overture_release_date,
             overture_sample_limit=overture_sample_limit,
+            bbox_minx=bbox_minx,
+            bbox_maxx=bbox_maxx,
+            bbox_miny=bbox_miny,
+            bbox_maxy=bbox_maxy,
         )
 
     # --- Helpers (convenience on config instance) ---
@@ -183,14 +214,34 @@ def _build_gcs_uris(
     return GCSUris(raw=to_uri(raw_b), silver=to_uri(silver_b), gold=to_uri(gold_b))
 
 
+def _parse_bbox_from_env() -> tuple[float, float, float, float]:
+    """Parse RPG_BBOX (south,west,north,east) to (minx, maxx, miny, maxy)."""
+    raw = (_get_env_var("RPG_BBOX") or "").strip()
+    if not raw:
+        s, w, n, e = DEFAULT_BBOX_SWNE
+        return (w, e, s, n)
+    parts = [p.strip() for p in raw.split(",")]
+    if len(parts) != 4:
+        s, w, n, e = DEFAULT_BBOX_SWNE
+        return (w, e, s, n)
+    try:
+        south, west, north, east = (float(x) for x in parts)
+        return (west, east, south, north)
+    except ValueError:
+        s, w, n, e = DEFAULT_BBOX_SWNE
+        return (w, e, s, n)
+
+
 def _build_dataset_uris() -> DatasetUris:
     overture_base = (
         _get_env_var("RPG_OVERTURE_PLACES_BASE_URL") or DEFAULT_OVERTURE_PLACES_BASE
     )
+    overpass = _get_env_var("RPG_OVERPASS_URL") or DEFAULT_OVERPASS_URL
     return DatasetUris(
         overture_places_base=overture_base,
         overture_places=_get_env_var("RPG_OVERTURE_PLACES_URI", "") or "",
         osm_extract=_get_env_var("RPG_OSM_EXTRACT_URI", "") or "",
+        overpass_url=overpass,
     )
 
 

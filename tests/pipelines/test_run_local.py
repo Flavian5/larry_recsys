@@ -160,7 +160,8 @@ def test_run_local_with_default_osm_path_after_fetch(tmp_path: Path) -> None:
             },
         ]
     }
-    with patch.object(_fetch_osm, "overpass_query", return_value=fake_overpass):
+    # Script uses data.osm_ingest.fetch_osm_pois_via_overpass -> overpass_query
+    with patch("data.osm_ingest.overpass_query", return_value=fake_overpass):
         with patch.object(sys, "argv", ["fetch_osm", "-o", str(osm_default)]):
             assert _fetch_osm.main() == 0
     assert osm_default.exists()

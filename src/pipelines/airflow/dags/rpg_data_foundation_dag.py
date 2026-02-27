@@ -59,7 +59,12 @@ def task_overture_sample(
     (data_root / "raw" / "overture").mkdir(parents=True, exist_ok=True)
 
     source = _overture_source(cfg, data_root)
-    bbox = BBox(minx=-122.5, maxx=-122.3, miny=37.7, maxy=37.9)
+    bbox = BBox(
+        minx=cfg.bbox_minx,
+        maxx=cfg.bbox_maxx,
+        miny=cfg.bbox_miny,
+        maxy=cfg.bbox_maxy,
+    )
     temp_dir = _raw_overture_temp(cfg)
     temp_dir.mkdir(parents=True, exist_ok=True)
     output = temp_dir / "overture_sample.parquet"
