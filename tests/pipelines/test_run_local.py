@@ -7,13 +7,13 @@ from unittest.mock import patch
 import pandas as pd
 
 from config.data_foundation import Config
-from pipelines.run_local import main
 from pipelines.airflow.dags.rpg_data_foundation_dag import (
     task_build_gold,
     task_build_silver,
-    task_overture_sample,
     task_osm_extract,
+    task_overture_sample,
 )
+from pipelines.run_local import main
 
 
 def test_run_local_full_pipeline_with_local_sources(
@@ -145,8 +145,9 @@ def test_run_local_with_default_osm_path_after_fetch(tmp_path: Path) -> None:
             },
         ]
     }
-    with patch("data.osm_ingest.overpass_query", return_value=fake_overpass):
-        with patch.object(
+    with (
+        patch("data.osm_ingest.overpass_query", return_value=fake_overpass),
+        patch.object(
             sys,
             "argv",
             [
@@ -160,7 +161,8 @@ def test_run_local_with_default_osm_path_after_fetch(tmp_path: Path) -> None:
                 "--overture-source",
                 str(overture_src),
             ],
-        ):
-            exit_code = main()
+        ),
+    ):
+        exit_code = main()
     assert exit_code == 0
     assert (tmp_path / "data" / "gold" / "venues.parquet").exists()

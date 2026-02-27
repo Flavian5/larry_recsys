@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
+
 from config.data_foundation import Config
-from pipelines.airflow.validation import get_validated_config
 from data.conflation import conflate_parquet, silver_to_gold
 from data.osm_ingest import extract_osm_pois, fetch_osm_pois_via_overpass
 from data.overture_ingest import (
@@ -16,6 +16,7 @@ from data.overture_ingest import (
     build_overture_parquet_url,
     sample_overture_places_by_bbox,
 )
+from pipelines.airflow.validation import get_validated_config
 
 if TYPE_CHECKING:
     pass  # Config used for type hints

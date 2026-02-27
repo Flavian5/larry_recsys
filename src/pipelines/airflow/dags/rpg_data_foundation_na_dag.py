@@ -111,10 +111,7 @@ def task_merge_silver_and_build_gold(
             local_path = temp_dir / blob.name.replace("/", "_")
             blob.download_to_filename(str(local_path))
             dfs.append(pd.read_parquet(local_path))
-        if not dfs:
-            merged = pd.DataFrame()
-        else:
-            merged = pd.concat(dfs, ignore_index=True)
+        merged = pd.DataFrame() if not dfs else pd.concat(dfs, ignore_index=True)
 
         silver_local = temp_dir / "venues.parquet"
         merged.to_parquet(silver_local, index=False)

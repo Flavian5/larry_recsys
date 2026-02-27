@@ -25,8 +25,8 @@ from pipelines.airflow.dags.rpg_data_foundation_dag import (
     task_build_silver,
     task_cleanup_raw_temp,
     task_fetch_osm,
-    task_overture_sample,
     task_osm_extract,
+    task_overture_sample,
 )
 
 
