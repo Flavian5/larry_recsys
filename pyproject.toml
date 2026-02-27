@@ -23,8 +23,8 @@ rpg-run-local = "pipelines.run_local:main"
 
 [project.optional-dependencies]
 dev = [
-  "black>=24.0.0",
-  "ruff>=0.8.0",
+  "black==26.1.0",
+  "ruff==0.15.4",
 ]
 
 [tool.pytest.ini_options]
