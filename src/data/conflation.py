@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 from collections import Counter
-from typing import Iterable, Protocol
+from typing import Iterable, Protocol, Sequence, cast
 
 import h3
 import numpy as np
@@ -76,7 +76,7 @@ def _haversine_m(
     lat2: float,
     lon2: float,
 ) -> float:
-    # Simple haversine distance in metres
+    """Haversine distance in metres (scalar version)."""
     r = 6371000.0
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
@@ -91,6 +91,27 @@ def _haversine_m(
     return r * c
 
 
+def _haversine_m_vectorized(
+    lat1: np.ndarray,
+    lon1: np.ndarray,
+    lat2: np.ndarray,
+    lon2: np.ndarray,
+) -> np.ndarray:
+    """Vectorized haversine distance in metres."""
+    r = 6371000.0
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    dphi = np.radians(lat2 - lat1)
+    dlambda = np.radians(lon2 - lon1)
+
+    a = (
+        np.sin(dphi / 2) ** 2
+        + np.cos(phi1) * np.cos(phi2) * np.sin(dlambda / 2) ** 2
+    )
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    return r * c
+
+
 def _h3_cell(lat: float, lon: float, res: int) -> str:
     """Return H3 cell (hex string) at given resolution. lat/lon in degrees."""
     return h3.latlng_to_cell(lat, lon, res)
@@ -98,12 +119,12 @@ def _h3_cell(lat: float, lon: float, res: int) -> str:
 
 def _h3_ring_cells(cell: str, k: int = 1) -> set[str]:
     """Return cell and its k-ring (cell + neighbors within distance k)."""
-    return h3.grid_disk(cell, k)
+    return set(h3.grid_disk(cell, k))
 
 
 def _aggregate_candidates_to_silver(
     o_df: pd.DataFrame,
-    candidates: list[tuple[object, object, object, object]],
+    candidates: Sequence[tuple[object, object, object, object]],
 ) -> pd.DataFrame:
     """Build one row per Overture place with lists of osm_ids, osm_amenities, has_dog_friendly.
     candidates: list of (gers_id, osm_id, amenity, dog_friendly).
@@ -117,9 +138,7 @@ def _aggregate_candidates_to_silver(
     for gers_id, osm_id, amenity, dog_friendly in candidates:
         osm_ids, amenities, any_dog = agg[gers_id]
         osm_ids.append(osm_id)
-        if amenity is not None and (isinstance(amenity, str) or pd.notna(amenity)):
-            amenities.append(amenity)
-        elif amenity is not None:
+        if amenity is not None:
             amenities.append(amenity)
         if dog_friendly:
             agg[gers_id] = (osm_ids, amenities, True)
@@ -171,24 +190,23 @@ def spatial_conflate(
     o_df = standardize_overture(overture_df)
     os_df = standardize_osm(osm_df)
 
-    # 1. Add primary H3 cell to Overture
+    # 1. Add primary H3 cell to Overture (using list comprehension for speed)
     o_df = o_df.copy()
-    o_df["_h3_cell"] = o_df.apply(
-        lambda r: _h3_cell(float(r["lat"]), float(r["lon"]), h3_res), axis=1
-    )
+    lat_vals = o_df["lat"].values
+    lon_vals = o_df["lon"].values
+    o_df["_h3_cell"] = [h3.latlng_to_cell(lat, lon, h3_res) for lat, lon in zip(lat_vals, lon_vals)]
 
     # 2. OSM: add primary cell, then explode to one row per cell in k-ring(1)
     os_df = os_df.copy()
-    os_df["_h3_primary"] = os_df.apply(
-        lambda r: _h3_cell(float(r["lat"]), float(r["lon"]), h3_res), axis=1
-    )
+    lat_vals = os_df["lat"].values
+    lon_vals = os_df["lon"].values
+    os_df["_h3_primary"] = [h3.latlng_to_cell(lat, lon, h3_res) for lat, lon in zip(lat_vals, lon_vals)]
     osm_exploded_rows: list[dict] = []
     for _, row in os_df.iterrows():
-        row_dict = row.to_dict()
-        primary = row_dict.pop("_h3_primary")
+        primary = row["_h3_primary"]
+        row_dict = row.drop("_h3_primary").to_dict()
         for cell in _h3_ring_cells(primary, 1):
-            r = {**row_dict, "_h3_cell": cell}
-            osm_exploded_rows.append(r)
+            osm_exploded_rows.append({**row_dict, "_h3_cell": cell})
     osm_exploded = (
         pd.DataFrame(osm_exploded_rows) if osm_exploded_rows else pd.DataFrame()
     )
@@ -209,15 +227,12 @@ def spatial_conflate(
     if merged.empty:
         return _aggregate_candidates_to_silver(o_df, [])
 
-    # 4. Haversine filter: use Overture (lat, lon) vs OSM (lat_osm, lon_osm)
-    merged["_dist_m"] = merged.apply(
-        lambda r: _haversine_m(
-            float(r["lat"]),
-            float(r["lon"]),
-            float(r["lat_osm"]),
-            float(r["lon_osm"]),
-        ),
-        axis=1,
+    # 4. Haversine filter (vectorized)
+    merged["_dist_m"] = _haversine_m_vectorized(
+        np.asarray(merged["lat"]),
+        np.asarray(merged["lon"]),
+        np.asarray(merged["lat_osm"]),
+        np.asarray(merged["lon_osm"]),
     )
     within = merged[merged["_dist_m"] <= radius_m].copy()
     within = within.drop_duplicates(subset=["gers_id", "osm_id"])

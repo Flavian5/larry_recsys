@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import datetime
 from os import getenv
 from pathlib import Path
@@ -106,9 +104,11 @@ def task_osm_extract(
     source = (
         cfg.datasets.osm_extract
         if cfg.datasets.osm_extract
-        else str((cfg.local.raw / "osm" / "mini_region.parquet").resolve())
+        else (cfg.local.raw / "osm" / "mini_region.parquet").resolve()
     )
-    if not any(source.startswith(p) for p in ("http://", "https://", "s3://", "gs://")):
+    if not any(
+        str(source).startswith(p) for p in ("http://", "https://", "s3://", "gs://")
+    ):
         source_path = Path(source)
         if not source_path.exists():
             default_relative = "data/raw/osm/mini_region.parquet"
@@ -121,7 +121,7 @@ def task_osm_extract(
     temp_dir = _raw_osm_temp(cfg)
     temp_dir.mkdir(parents=True, exist_ok=True)
     output = temp_dir / "osm_pois.parquet"
-    extract_osm_pois(source, output)
+    extract_osm_pois(Path(source), output)
 
 
 def task_build_silver(

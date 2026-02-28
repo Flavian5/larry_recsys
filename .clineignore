@@ -1,0 +1,19 @@
+# Ignore heavy dependencies
+node_modules/
+dist/
+build/
+.git/
+
+# Ignore media and binary files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.zip
+
+# Ignore logs and temp files
+*.log
+tmp/
+temp/
+.DS_Store

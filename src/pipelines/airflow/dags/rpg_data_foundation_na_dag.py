@@ -4,8 +4,6 @@ Composer-only tiled DAG: conflate Overture + OSM for North America by H3 tile, t
 Use this DAG for continental-scale runs. For local/single-bbox runs use rpg_data_foundation DAG instead.
 """
 
-from __future__ import annotations
-
 import tempfile
 from datetime import datetime
 from os import getenv

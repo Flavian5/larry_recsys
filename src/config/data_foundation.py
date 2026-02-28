@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 EnvKind = Literal["local", "composer-dev", "composer-prod"]
 OutputFormat = Literal["parquet", "text"]
@@ -62,26 +63,22 @@ class Config(BaseModel, frozen=True):
     overture_release_date: str = Field(default="")
     overture_sample_limit: int | None = Field(default=None)
     # Shared bbox for Overture sample and OSM fetch (minx, maxx, miny, maxy)
-    bbox_minx: float = Field(default=-122.52)
-    bbox_maxx: float = Field(default=-122.35)
-    bbox_miny: float = Field(default=37.2)
-    bbox_maxy: float = Field(default=37.82)
+    bbox_minx: float = Field(default=DEFAULT_BBOX_SWNE[1])
+    bbox_maxx: float = Field(default=DEFAULT_BBOX_SWNE[3])
+    bbox_miny: float = Field(default=DEFAULT_BBOX_SWNE[0])
+    bbox_maxy: float = Field(default=DEFAULT_BBOX_SWNE[2])
 
     # --- Factory: from environment (production/DAG) ---
 
     @classmethod
     def from_env(cls, base_dir: str | Path = ".") -> Config:
         """Build config from environment. Loads .env if present. Raises ValidationError if invalid."""
-        try:
-            from dotenv import load_dotenv
 
-            load_dotenv(Path(base_dir) / ".env")
-        except ImportError:
-            pass
+        load_dotenv(Path(base_dir) / ".env")
         env = _detect_env()
         project = _get_env_var("RPG_GCP_PROJECT")
         local_paths = _build_local_paths(base_dir)
-        gcs_uris = _build_gcs_uris(project=project)
+        gcs_uris = build_gcs_uris(project=project)
         output_format = _detect_local_output_format()
         datasets = _build_dataset_uris()
         release_date = (_get_env_var("RPG_OVERTURE_RELEASE_DATE") or "").strip()
@@ -199,7 +196,7 @@ def _build_local_paths(base_dir: str | Path = ".") -> LocalPaths:
 
 
 def _build_gcs_uris(
-    project: str | None = None,  # accepted for API compat; buckets from env/args
+    _project: str | None = None,  # accepted for API compat; buckets from env/args
     raw_bucket: str | None = None,
     silver_bucket: str | None = None,
     gold_bucket: str | None = None,
@@ -291,7 +288,7 @@ def build_gcs_uris(
 ) -> GCSUris:
     """Build GCS URIs from env or args. Public for tests."""
     return _build_gcs_uris(
-        project=project,
+        _project=project,
         raw_bucket=raw_bucket,
         silver_bucket=silver_bucket,
         gold_bucket=gold_bucket,

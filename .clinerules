@@ -1,0 +1,12 @@
+# Token Efficiency Rules
+- BE CONCISE. Do not explain things unless specifically asked.
+- In PLAN mode, provide a high-level architectural outline only.
+- In ACT mode, go straight to the code blocks.
+- Do not list files recursively unless it is critical for a new directory structure.
+- Use terminal tools (ls, cat) sparingly; rely on your existing project map first.
+- If a task is simple, skip the internal monologue and execute immediately.
+# Critical Tool Guard
+- Whenever using 'write_to_file', the 'content' parameter is MANDATORY. 
+- Do not attempt to 'write_to_file' with an empty string or null value.
+- If you are unsure of the content, read the file first using 'read_file'.
+- When using execute_command, you MUST include the command string and the requires_approval boolean (true/false).
