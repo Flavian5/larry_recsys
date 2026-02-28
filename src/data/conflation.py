@@ -21,7 +21,7 @@ def standardize_overture(df: pd.DataFrame) -> pd.DataFrame:
     Normalise Overture schema for conflation.
 
     - Ensure `gers_id` is uppercase, stripped string.
-    - Keep core columns: `gers_id`, `lat`, `lon`, `city` (if present) and all others unchanged.
+    - Keep core columns: `gers_id`, `lat`, `lon`, `city` (if present), `theme` (if present) and all others unchanged.
     """
     out = df.copy()
     if "gers_id" not in out.columns:
@@ -36,6 +36,9 @@ def standardize_overture(df: pd.DataFrame) -> pd.DataFrame:
 
     if "city" in out.columns:
         out["city"] = out["city"].fillna("").astype(str)
+
+    if "theme" in out.columns:
+        out["theme"] = out["theme"].fillna("").astype(str)
 
     return out
 
@@ -159,11 +162,15 @@ def _aggregate_candidates_to_silver(
         }
         if "city" in o_row:
             rec["city"] = o_row["city"]
+        if "theme" in o_row and o_row.get("theme"):
+            rec["theme"] = o_row["theme"]
         records.append(rec)
 
     df = pd.DataFrame.from_records(records)
     if "has_dog_friendly" in df.columns:
         df["has_dog_friendly"] = df["has_dog_friendly"].astype(bool)
+    if "theme" in df.columns:
+        df["theme"] = df["theme"].fillna("").astype(str)
     return df
 
 
@@ -286,14 +293,14 @@ def conflate_parquet(
                 .nunique(dropna=True)
             )
             print(f"  - overture unique gers_id: {n_unique}", flush=True)
-        except Exception:
+        except (KeyError, ValueError, TypeError):
             pass
     print(f"  - osm rows: {len(osm_df)}", flush=True)
     if "osm_id" in osm_df.columns:
         try:
             n_unique = osm_df["osm_id"].nunique(dropna=True)
             print(f"  - osm unique osm_id: {n_unique}", flush=True)
-        except Exception:
+        except (KeyError, ValueError, TypeError):
             pass
     print(f"[conflation] Conflating with radius_m={radius_m} ...", flush=True)
     silver_df = spatial_conflate(overture_df, osm_df, radius_m)
@@ -334,7 +341,7 @@ def conflate_parquet(
                     f"mean={match_counts.mean():.2f}, p50={p50:.0f}, p90={p90:.0f}, p99={p99:.0f}, max={int(match_counts.max())}",
                     flush=True,
                 )
-            except Exception:
+            except (KeyError, ValueError, TypeError):
                 pass
 
         # Unique OSM POIs that got attached anywhere
@@ -354,7 +361,7 @@ def conflate_parquet(
                 f"  - unique OSM POIs matched to any Overture row: {n_unique_matched_osm}",
                 flush=True,
             )
-        except Exception:
+        except (KeyError, ValueError, TypeError):
             pass
 
     if "osm_amenities" in silver_df.columns:
@@ -373,7 +380,7 @@ def conflate_parquet(
             if c:
                 top = ", ".join(f"{k}({v})" for k, v in c.most_common(10))
                 print(f"[conflation] Top matched OSM amenities: {top}", flush=True)
-        except Exception:
+        except (KeyError, ValueError, TypeError):
             pass
 
     out = Path(output_path)
@@ -401,12 +408,15 @@ def _gold_text_vectorized(df: pd.DataFrame) -> pd.Series:
     """
     Build gold_text column with vectorized ops. Uses one .apply only for the
     list column (osm_amenities); rest is vectorized for better performance on large datasets.
+
+    Incorporates theme information when present (e.g., "administrative boundary", "land", "water").
     """
     name = df.get("name", pd.Series("", index=df.index)).fillna("").astype(str)
     category = df.get("category", pd.Series("", index=df.index)).fillna("").astype(str)
     city = (
         df.get("city", pd.Series("", index=df.index)).fillna("").astype(str).str.strip()
     )
+    theme = df.get("theme", pd.Series("", index=df.index)).fillna("").astype(str)
     lat = pd.to_numeric(df["lat"], errors="coerce").fillna(0)
     lon = pd.to_numeric(df["lon"], errors="coerce").fillna(0)
     osm_amenities = df.get(
@@ -414,7 +424,13 @@ def _gold_text_vectorized(df: pd.DataFrame) -> pd.Series:
         pd.Series([[]] * len(df), index=df.index),
     )
 
-    sentence1 = name + " is a " + category
+    # Build item type description based on theme and category
+    # Theme overrides category for non-place themes
+    item_type = np.where(theme != "", theme + " " + category, category).astype(str)
+    # Clean up double spaces
+    item_type = pd.Series(item_type, index=df.index).str.replace(r"\s+", " ", regex=True)
+
+    sentence1 = name + " is a " + item_type
     has_city = city != ""
     sentence1 = sentence1 + np.where(has_city, " in " + city, "")
     sentence1 = sentence1 + "."

@@ -1,12 +1,24 @@
-# Token Efficiency Rules
+# Core Efficiency & Token Diet
 - BE CONCISE. Do not explain things unless specifically asked.
+- Skip preambles like "I understand..." or "Based on your request...".
 - In PLAN mode, provide a high-level architectural outline only.
-- In ACT mode, go straight to the code blocks.
-- Do not list files recursively unless it is critical for a new directory structure.
-- Use terminal tools (ls, cat) sparingly; rely on your existing project map first.
-- If a task is simple, skip the internal monologue and execute immediately.
-# Critical Tool Guard
-- Whenever using 'write_to_file', the 'content' parameter is MANDATORY. 
-- Do not attempt to 'write_to_file' with an empty string or null value.
-- If you are unsure of the content, read the file first using 'read_file'.
-- When using execute_command, you MUST include the command string and the requires_approval boolean (true/false).
+- In ACT mode, go straight to code blocks.
+- DO NOT list files recursively unless it is critical for a new directory structure. Use 'list_files' on specific sub-directories only.
+- Rely on your existing PROJECT MAP; use 'ls' and 'cat' only for verifying file content before a 'write'.
+
+# Kimi k2.5 Agent Swarm Logic
+- You are in AGENT SWARM mode. Use internal <think> tags to simulate parallel sub-agents (e.g., [Researcher], [Architect], [Reviewer]).
+- [Researcher] should check imports and dependencies across files before suggesting changes.
+- [Reviewer] must verify the 'diff' for potential side effects in other modules.
+- Do not repeat the project map or large file contents in your thinking blocks.
+- Use your native MoonViT vision encoder for any UI/layout tasks via screenshots.
+
+# Hard Tool Guards (Parameter Integrity)
+- MANDATORY: Every 'write_to_file' MUST contain a non-empty 'content' parameter.
+- MANDATORY: Every 'execute_command' MUST include 'command' and 'requires_approval: true/false'.
+- MANDATORY: Every 'search_files' MUST include a valid 'regex' parameter.
+- If a tool call fails, analyze the schema error in <think> and re-issue the call correctly using XML format.
+
+# 📦 Context & Memory Management
+- If the context exceeds 100k tokens, proactively suggest a '/compact' or summarize the current state.
+- Focus strictly on the files relevant to the current task to keep the 'input' window clean.

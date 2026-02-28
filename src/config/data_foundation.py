@@ -44,6 +44,9 @@ class DatasetUris(BaseModel, frozen=True):
 
     overture_places_base: str = DEFAULT_OVERTURE_PLACES_BASE
     overture_places: str = ""
+    overture_administrative: str = ""
+    overture_land: str = ""
+    overture_water: str = ""
     osm_extract: str = ""
     overpass_url: str = DEFAULT_OVERPASS_URL
 
@@ -67,6 +70,9 @@ class Config(BaseModel, frozen=True):
     bbox_maxx: float = Field(default=DEFAULT_BBOX_SWNE[3])
     bbox_miny: float = Field(default=DEFAULT_BBOX_SWNE[0])
     bbox_maxy: float = Field(default=DEFAULT_BBOX_SWNE[2])
+    # Cache settings
+    cache_enabled: bool = Field(default=True)
+    cache_ttl_hours: int = Field(default=24, gt=0)
 
     # --- Factory: from environment (production/DAG) ---
 
@@ -87,6 +93,16 @@ class Config(BaseModel, frozen=True):
             int(sample_limit) if sample_limit and sample_limit.isdigit() else None
         )
         minx, maxx, miny, maxy = _parse_bbox_from_env()
+        # Cache settings
+        cache_enabled = (_get_env_var("RPG_CACHE_ENABLED", "true") or "true").lower() not in (
+            "0",
+            "false",
+            "no",
+            "n",
+        )
+        cache_ttl_raw = _get_env_var("RPG_CACHE_TTL_HOURS", "24")
+        cache_ttl_hours = int(cache_ttl_raw) if cache_ttl_raw and cache_ttl_raw.isdigit() else 24
+
         return cls(
             env=env,
             gcp_project=project,
@@ -100,6 +116,8 @@ class Config(BaseModel, frozen=True):
             bbox_maxx=maxx,
             bbox_miny=miny,
             bbox_maxy=maxy,
+            cache_enabled=cache_enabled,
+            cache_ttl_hours=cache_ttl_hours,
         )
 
     # --- Factory: for tests (inject this into tasks) ---
@@ -117,6 +135,9 @@ class Config(BaseModel, frozen=True):
         output_format: OutputFormat = "parquet",
         overture_places_base: str = DEFAULT_OVERTURE_PLACES_BASE,
         overture_places: str = "",
+        overture_administrative: str = "",
+        overture_land: str = "",
+        overture_water: str = "",
         osm_extract: str = "",
         overpass_url: str = DEFAULT_OVERPASS_URL,
         overture_release_date: str = "",
@@ -125,6 +146,8 @@ class Config(BaseModel, frozen=True):
         bbox_maxx: float = DEFAULT_BBOX_SWNE[3],
         bbox_miny: float = DEFAULT_BBOX_SWNE[0],
         bbox_maxy: float = DEFAULT_BBOX_SWNE[2],
+        cache_enabled: bool = True,
+        cache_ttl_hours: int = 24,
     ) -> Config:
         """Build a valid config with overrides for testing. No env vars required."""
         base = Path(base_dir)
@@ -137,6 +160,9 @@ class Config(BaseModel, frozen=True):
         datasets = DatasetUris(
             overture_places_base=overture_places_base,
             overture_places=overture_places,
+            overture_administrative=overture_administrative,
+            overture_land=overture_land,
+            overture_water=overture_water,
             osm_extract=osm_extract,
             overpass_url=overpass_url,
         )
@@ -153,6 +179,8 @@ class Config(BaseModel, frozen=True):
             bbox_maxx=bbox_maxx,
             bbox_miny=bbox_miny,
             bbox_maxy=bbox_maxy,
+            cache_enabled=cache_enabled,
+            cache_ttl_hours=cache_ttl_hours,
         )
 
     # --- Helpers (convenience on config instance) ---
@@ -237,6 +265,9 @@ def _build_dataset_uris() -> DatasetUris:
     return DatasetUris(
         overture_places_base=overture_base,
         overture_places=_get_env_var("RPG_OVERTURE_PLACES_URI", "") or "",
+        overture_administrative=_get_env_var("RPG_OVERTURE_ADMINISTRATIVE_URI", "") or "",
+        overture_land=_get_env_var("RPG_OVERTURE_LAND_URI", "") or "",
+        overture_water=_get_env_var("RPG_OVERTURE_WATER_URI", "") or "",
         osm_extract=_get_env_var("RPG_OSM_EXTRACT_URI", "") or "",
         overpass_url=overpass,
     )

@@ -110,6 +110,15 @@ airflow-dag-state:
 	@echo "Use: airflow dags list-runs -d rpg_data_foundation"
 
 # ------------------------------------------------------------------------------
+# Benchmarks: conflation speed testing
+# ------------------------------------------------------------------------------
+
+.PHONY: benchmark-conflation
+benchmark-conflation:
+	@echo "Running conflation benchmarks (10K -> 100K -> 250K)..."
+	PYTHONPATH=src $(PYTHON) -m benchmarks.conflation_speed --sample-sizes 10000,100000,250000 --date "$(DATE)" --data-dir "$(DATA_DIR)"
+
+# ------------------------------------------------------------------------------
 # Convenience: pull data then trigger DAG (same DATE/SAMPLE_SIZE)
 # ------------------------------------------------------------------------------
 

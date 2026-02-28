@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from enum import Enum
 from pathlib import Path
 from typing import Protocol
 
@@ -11,6 +12,25 @@ from pydantic import BaseModel, model_validator
 # HTTPS base (for docs); DuckDB reads via S3 protocol so we use S3 URI for remote pulls
 DEFAULT_OVERTURE_PLACES_BASE = "https://overturemaps-us-west-2.s3.amazonaws.com"
 DEFAULT_OVERTURE_S3_BUCKET = "overturemaps-us-west-2"
+
+
+class OvertureTheme(str, Enum):
+    """Overture Maps theme names."""
+
+    PLACES = "places"
+    ADMINISTRATIVE = "administrative"
+    LAND = "land"
+    WATER = "water"
+
+    @property
+    def default_type(self) -> str:
+        """Default type for each theme."""
+        return {
+            OvertureTheme.PLACES: "place",
+            OvertureTheme.ADMINISTRATIVE: "admins",
+            OvertureTheme.LAND: "land",
+            OvertureTheme.WATER: "water",
+        }[self]
 
 
 class BBox(BaseModel, frozen=True):
@@ -47,10 +67,12 @@ def build_overture_parquet_url(
     release_date: str,
     base_url: str | None = None,
     *,
+    theme: OvertureTheme = OvertureTheme.PLACES,
+    theme_type: str | None = None,
     use_s3: bool = True,
 ) -> str:
     """
-    Build the Overture Places GeoParquet source path for DuckDB.
+    Build the Overture GeoParquet source path for DuckDB.
 
     use_s3=True (default): returns s3://bucket/release/... so DuckDB can list
     and read multiple parquet files. use_s3=False: returns https://... (for
@@ -66,7 +88,8 @@ def build_overture_parquet_url(
     release = release_date.strip()
     if release and "." not in release:
         release = f"{release}.0"
-    path_suffix = f"release/{release}/theme=places/type=place/*.parquet"
+    type_str = theme_type or theme.default_type
+    path_suffix = f"release/{release}/theme={theme.value}/type={type_str}/*.parquet"
     if use_s3:
         bucket = (
             os.getenv("RPG_OVERTURE_S3_BUCKET", DEFAULT_OVERTURE_S3_BUCKET)
@@ -166,4 +189,104 @@ def sample_overture_places_by_bbox(
     print(f"[overture] Writing to {out} ...", flush=True)
     df.to_parquet(out)
     print(f"[overture] Wrote {out} ({n_out} rows)", flush=True)
+    return out
+
+
+def sample_overture_by_bbox(
+    source: str,
+    bbox: BBox,
+    output_path: _PathLike,
+    theme: OvertureTheme = OvertureTheme.PLACES,
+    *,
+    limit: int | None = None,
+) -> Path:
+    """
+    Sample Overture data within a bounding box and write to Parquet.
+
+    Handles different themes (places, administrative, land, water) with theme-specific
+    schema handling. Each theme may have different columns, so we extract common
+    fields (id, names, categories) plus geometry centroid for lat/lon.
+    """
+    import time
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    src = source.strip()
+    if src.startswith("s3://"):
+        print(
+            f"[overture:{theme.value}] Reading from S3 (this may take several minutes)...",
+            flush=True,
+        )
+        print(f"[overture:{theme.value}] Source: {src}", flush=True)
+    else:
+        print(f"[overture:{theme.value}] Reading from local: {src}", flush=True)
+    t0 = time.perf_counter()
+
+    con = duckdb.connect()
+    try:
+        if src.lower().startswith("http") or src.startswith("s3://"):
+            con.execute("INSTALL httpfs")
+            con.execute("LOAD httpfs")
+            if src.startswith("s3://"):
+                con.execute("SET s3_region='us-west-2'")
+
+        con.execute(
+            "CREATE TABLE overture_src AS SELECT * FROM read_parquet(?)",
+            [source],
+        )
+        load_sec = time.perf_counter() - t0
+        n_total = con.execute("SELECT COUNT(*) FROM overture_src").fetchone()[0]
+        print(f"[overture:{theme.value}] Loaded {n_total} rows in {load_sec:.1f}s", flush=True)
+
+        # Get column schema
+        cols = [c[0] for c in con.execute("DESCRIBE overture_src").fetchall()]
+
+        # Theme-specific column selection
+        # Common: id, names, categories
+        # Places: bbox (xmin,xmax=lon; ymin,ymax=lat)
+        # Administrative: bbox for centroid
+        # Land: bbox for centroid  
+        # Water: bbox for centroid
+        if "bbox" in cols:
+            # Most Overture themes use bbox struct
+            sql = """
+                SELECT
+                    id AS gers_id,
+                    (bbox.xmin + bbox.xmax) / 2 AS lon,
+                    (bbox.ymin + bbox.ymax) / 2 AS lat
+                FROM overture_src
+                WHERE bbox IS NOT NULL
+                  AND (bbox.xmin + bbox.xmax) / 2 BETWEEN ? AND ?
+                  AND (bbox.ymin + bbox.ymax) / 2 BETWEEN ? AND ?
+                """
+        else:
+            # Fallback: use lon/lat directly if available
+            sql = """
+                SELECT *
+                FROM overture_src
+                WHERE lon BETWEEN ? AND ?
+                  AND lat BETWEEN ? AND ?
+                """
+
+        params: list[object] = [bbox.minx, bbox.maxx, bbox.miny, bbox.maxy]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+
+        df: pd.DataFrame = con.execute(sql, params).df()
+        if "gers_id" not in df.columns and "id" in df.columns:
+            df = df.rename(columns={"id": "gers_id"})
+
+        # Add theme column for downstream processing
+        df["theme"] = theme.value
+
+    finally:
+        con.close()
+
+    n_out = len(df)
+    print(f"[overture:{theme.value}] Filtered to {n_out} rows (bbox + limit)", flush=True)
+    print(f"[overture:{theme.value}] Writing to {out} ...", flush=True)
+    df.to_parquet(out)
+    print(f"[overture:{theme.value}] Wrote {out} ({n_out} rows)", flush=True)
     return out

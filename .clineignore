@@ -1,19 +1,42 @@
-# Ignore heavy dependencies
+# 📦 Heavy Dependencies (The 100k Token Killers)
 node_modules/
 dist/
 build/
 .git/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
-# Ignore media and binary files
+# 📊 Data & ML Assets (Essential for Recsys)
+data/            # Ignore the whole folder if it contains datasets
+*.csv
+*.parquet
+*.jsonl
+*.sqlite
+*.pkl
+*.model
+*.weights
+
+# 📓 Notebook & IDE State
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+
+# 📝 Media & Binary
 *.png
 *.jpg
 *.jpeg
 *.gif
 *.pdf
 *.zip
+*.tar.gz
 
-# Ignore logs and temp files
+# 🪵 Logs & Temp
 *.log
 tmp/
 temp/
-.DS_Store
