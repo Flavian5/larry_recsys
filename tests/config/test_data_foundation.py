@@ -112,13 +112,21 @@ def test_config_from_env_dataset_uris(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_config_from_env_all_overture_themes(monkeypatch: pytest.MonkeyPatch) -> None:
     """All Overture theme URIs can be set via environment variables."""
-    monkeypatch.setenv("RPG_OVERTURE_PLACES_URI", "https://example.com/places/*.parquet")
-    monkeypatch.setenv("RPG_OVERTURE_ADMINISTRATIVE_URI", "https://example.com/administrative/*.parquet")
+    monkeypatch.setenv(
+        "RPG_OVERTURE_PLACES_URI", "https://example.com/places/*.parquet"
+    )
+    monkeypatch.setenv(
+        "RPG_OVERTURE_ADMINISTRATIVE_URI",
+        "https://example.com/administrative/*.parquet",
+    )
     monkeypatch.setenv("RPG_OVERTURE_LAND_URI", "https://example.com/land/*.parquet")
     monkeypatch.setenv("RPG_OVERTURE_WATER_URI", "https://example.com/water/*.parquet")
     cfg = Config.from_env(base_dir=Path("."))
     assert cfg.datasets.overture_places == "https://example.com/places/*.parquet"
-    assert cfg.datasets.overture_administrative == "https://example.com/administrative/*.parquet"
+    assert (
+        cfg.datasets.overture_administrative
+        == "https://example.com/administrative/*.parquet"
+    )
     assert cfg.datasets.overture_land == "https://example.com/land/*.parquet"
     assert cfg.datasets.overture_water == "https://example.com/water/*.parquet"
 

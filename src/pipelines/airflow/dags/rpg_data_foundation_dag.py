@@ -20,9 +20,9 @@ from pipelines.shared import (
     _is_cache_valid,
     find_all_theme_samples,
     get_bbox_from_config,
-    get_overture_cache_path,
     get_osm_bbox_from_config,
     get_osm_cache_path,
+    get_overture_cache_path,
 )
 
 if TYPE_CHECKING:
@@ -47,9 +47,8 @@ def _overture_source(cfg: Config, data_root: Path, theme: OvertureTheme) -> str:
     """Resolve Overture source from config or env for a specific theme."""
     uri_map = {
         OvertureTheme.PLACES: cfg.datasets.overture_places,
-        OvertureTheme.ADMINISTRATIVE: cfg.datasets.overture_administrative,
-        OvertureTheme.LAND: cfg.datasets.overture_land,
-        OvertureTheme.WATER: cfg.datasets.overture_water,
+        OvertureTheme.DIVISIONS: cfg.datasets.overture_administrative,  # legacy env var
+        OvertureTheme.BASE: cfg.datasets.overture_land,  # legacy env var (bathymetry)
     }
     uri = uri_map.get(theme, "")
     if uri:
@@ -92,23 +91,28 @@ def task_overture_sample(
     bbox_tuple = get_bbox_from_config(cfg)
     cache_path = get_overture_cache_path(cfg, theme, bbox_tuple)
 
-    print(f"[overture:{theme.value}] cache_path={cache_path}, exists={cache_path.exists()}", flush=True)
+    print(
+        f"[overture:{theme.value}] cache_path={cache_path}, exists={cache_path.exists()}",
+        flush=True,
+    )
 
     # Get data (from cache or download)
     if cfg.cache_enabled and _is_cache_valid(cache_path, cfg.cache_ttl_hours):
         import shutil
 
         print(f"[overture:{theme.value}] Using cached data: {cache_path}", flush=True)
-        data_path = cache_path
     else:
         import shutil
 
         print(f"[overture:{theme.value}] Downloading from source", flush=True)
-        sample_overture_by_bbox(source, bbox, output, theme, limit=cfg.overture_sample_limit)
+        sample_overture_by_bbox(
+            source, bbox, output, theme, limit=cfg.overture_sample_limit
+        )
 
         # Cache the data if enabled
         if cfg.cache_enabled:
             import shutil
+
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(output, cache_path)
             print(f"[overture:{theme.value}] Cached to: {cache_path}", flush=True)
@@ -118,25 +122,22 @@ def task_overture_sample(
 
     # Copy from cache to output
     import shutil
+
     shutil.copy2(cache_path, output)
     print(f"[overture:{theme.value}] Copied from cache to output: {output}", flush=True)
 
 
-# Task factories for each theme
+# Task factories for each theme (2026+ releases)
 def task_overture_places(config: Config | None = None, **_context: object) -> None:
     task_overture_sample(config=config, theme=OvertureTheme.PLACES)
 
 
-def task_overture_administrative(config: Config | None = None, **_context: object) -> None:
-    task_overture_sample(config=config, theme=OvertureTheme.ADMINISTRATIVE)
+def task_overture_divisions(config: Config | None = None, **_context: object) -> None:
+    task_overture_sample(config=config, theme=OvertureTheme.DIVISIONS)
 
 
-def task_overture_land(config: Config | None = None, **_context: object) -> None:
-    task_overture_sample(config=config, theme=OvertureTheme.LAND)
-
-
-def task_overture_water(config: Config | None = None, **_context: object) -> None:
-    task_overture_sample(config=config, theme=OvertureTheme.WATER)
+def task_overture_base(config: Config | None = None, **_context: object) -> None:
+    task_overture_sample(config=config, theme=OvertureTheme.BASE)
 
 
 def task_fetch_osm(
@@ -230,10 +231,16 @@ def task_build_silver(
         if legacy_path.exists():
             theme_samples[OvertureTheme.PLACES] = legacy_path
         else:
-            print("[build_silver] No Overture sample found, skipping conflation", flush=True)
+            print(
+                "[build_silver] No Overture sample found, skipping conflation",
+                flush=True,
+            )
             return
 
-    print(f"[build_silver] Found {len(theme_samples)} theme samples: {list(theme_samples.keys())}", flush=True)
+    print(
+        f"[build_silver] Found {len(theme_samples)} theme samples: {list(theme_samples.keys())}",
+        flush=True,
+    )
 
     # Merge all theme dataframes
     dfs = []
@@ -254,7 +261,9 @@ def task_build_silver(
     overture_combined = _raw_overture_temp(cfg) / "overture_combined.parquet"
     overture_combined.parent.mkdir(parents=True, exist_ok=True)
     combined_df.to_parquet(overture_combined, index=False)
-    print(f"[build_silver] Combined {len(combined_df)} rows from all themes", flush=True)
+    print(
+        f"[build_silver] Combined {len(combined_df)} rows from all themes", flush=True
+    )
 
     osm_path = _raw_osm_temp(cfg) / "osm_pois.parquet"
     silver_path = cfg.local.silver / cfg.silver_venues_filename()
@@ -302,22 +311,18 @@ with DAG(
     catchup=False,
     tags=["rpg", "data-foundation"],
 ) as dag:
-    # Overture theme tasks (places by default, plus admin/land/water)
+    # Overture theme tasks (2026+ releases: places, divisions, base)
     overture_places = PythonOperator(
         task_id="overture_places",
         python_callable=task_overture_places,
     )
-    overture_administrative = PythonOperator(
-        task_id="overture_administrative",
-        python_callable=task_overture_administrative,
+    overture_divisions = PythonOperator(
+        task_id="overture_divisions",
+        python_callable=task_overture_divisions,
     )
-    overture_land = PythonOperator(
-        task_id="overture_land",
-        python_callable=task_overture_land,
-    )
-    overture_water = PythonOperator(
-        task_id="overture_water",
-        python_callable=task_overture_water,
+    overture_base = PythonOperator(
+        task_id="overture_base",
+        python_callable=task_overture_base,
     )
 
     fetch_osm = PythonOperator(
@@ -347,8 +352,7 @@ with DAG(
 
     # Overture themes run in parallel and feed into build_silver
     (overture_places >> build_silver)
-    (overture_administrative >> build_silver)
-    (overture_land >> build_silver)
-    (overture_water >> build_silver)
+    (overture_divisions >> build_silver)
+    (overture_base >> build_silver)
     (fetch_osm >> osm_extract >> build_silver)
     (build_silver >> build_gold >> cleanup_raw_temp)

@@ -4,13 +4,13 @@ Local runner: pull from actual Overture/OSM sources (date + sample size) and run
 Usage:
   python -m pipelines.run_local --date 2024-01-01 --sample-size 5000 --data-dir ./data
   # Or after pip install -e .:
-  rpg-run-local --date 2024-01-01 --sample-size 5000 --themes places,administrative,land,water
+  rpg-run-local --date 2024-01-01 --sample-size 5000 --themes places,divisions,base
 
 For Overture, the release date selects the Overture Maps release. For OSM, pass a path or URI
 to a Parquet extract via --osm-source (default: data/raw/osm/mini_region.parquet if present).
 
 Use --themes to specify which Overture themes to download (comma-separated):
-  places, administrative, land, water
+  places, divisions, base (2026+ releases)
 """
 
 from __future__ import annotations
@@ -30,20 +30,16 @@ from pipelines.airflow.dags.rpg_data_foundation_dag import (
     task_cleanup_raw_temp,
     task_fetch_osm,
     task_osm_extract,
-    task_overture_administrative,
-    task_overture_land,
+    task_overture_base,
+    task_overture_divisions,
     task_overture_places,
-    task_overture_sample,
-    task_overture_water,
 )
 
-
-# Theme to task factory mapping
+# Theme to task factory mapping (2026+ releases)
 THEME_TASK_FACTORIES = {
     OvertureTheme.PLACES: task_overture_places,
-    OvertureTheme.ADMINISTRATIVE: task_overture_administrative,
-    OvertureTheme.LAND: task_overture_land,
-    OvertureTheme.WATER: task_overture_water,
+    OvertureTheme.DIVISIONS: task_overture_divisions,
+    OvertureTheme.BASE: task_overture_base,
 }
 
 
@@ -72,7 +68,7 @@ def _parse_args() -> argparse.Namespace:
         "--themes",
         type=str,
         default="places",
-        help="Comma-separated Overture themes to download: places,administrative,land,water (default: places).",
+        help="Comma-separated Overture themes to download: places,divisions,base (default: places).",
     )
     p.add_argument(
         "--osm-source",
@@ -147,13 +143,15 @@ def main() -> int:
         if task_factory:
             all_tasks.append((task_name, task_factory))
 
-    all_tasks.extend([
-        ("fetch_osm", task_fetch_osm),
-        ("osm_extract", task_osm_extract),
-        ("build_silver", task_build_silver),
-        ("build_gold", task_build_gold),
-        ("cleanup_raw_temp", task_cleanup_raw_temp),
-    ])
+    all_tasks.extend(
+        [
+            ("fetch_osm", task_fetch_osm),
+            ("osm_extract", task_osm_extract),
+            ("build_silver", task_build_silver),
+            ("build_gold", task_build_gold),
+            ("cleanup_raw_temp", task_cleanup_raw_temp),
+        ]
+    )
 
     only_names = [s.strip() for s in args.only.split(",") if s.strip()]
     if only_names:

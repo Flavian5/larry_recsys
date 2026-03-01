@@ -23,28 +23,25 @@ def test_dag_has_expected_tasks_and_order() -> None:
         "fetch_osm",
         "osm_extract",
         "overture_places",
-        "overture_administrative",
-        "overture_land",
-        "overture_water",
+        "overture_divisions",
+        "overture_base",
     ]
     assert sorted(task_ids) == sorted(expected_tasks)
 
     # All Overture theme tasks should feed into build_silver
     overture_places = dag.get_task("overture_places")
-    overture_administrative = dag.get_task("overture_administrative")
-    overture_land = dag.get_task("overture_land")
-    overture_water = dag.get_task("overture_water")
+    overture_divisions = dag.get_task("overture_divisions")
+    overture_base = dag.get_task("overture_base")
     fetch_osm = dag.get_task("fetch_osm")
     osm_extract = dag.get_task("osm_extract")
     build_silver = dag.get_task("build_silver")
     build_gold = dag.get_task("build_gold")
     cleanup_raw_temp = dag.get_task("cleanup_raw_temp")
 
-    # All Overture themes feed into build_silver
+    # All Overture themes feed into build_silver (2026+ releases)
     assert build_silver in overture_places.downstream_list
-    assert build_silver in overture_administrative.downstream_list
-    assert build_silver in overture_land.downstream_list
-    assert build_silver in overture_water.downstream_list
+    assert build_silver in overture_divisions.downstream_list
+    assert build_silver in overture_base.downstream_list
     # OSM pipeline
     assert osm_extract in fetch_osm.downstream_list
     assert build_silver in osm_extract.downstream_list

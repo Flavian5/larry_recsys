@@ -11,8 +11,8 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 EnvKind = Literal["local", "composer-dev", "composer-prod"]
 OutputFormat = Literal["parquet", "text"]
@@ -94,14 +94,18 @@ class Config(BaseModel, frozen=True):
         )
         minx, maxx, miny, maxy = _parse_bbox_from_env()
         # Cache settings
-        cache_enabled = (_get_env_var("RPG_CACHE_ENABLED", "true") or "true").lower() not in (
+        cache_enabled = (
+            _get_env_var("RPG_CACHE_ENABLED", "true") or "true"
+        ).lower() not in (
             "0",
             "false",
             "no",
             "n",
         )
         cache_ttl_raw = _get_env_var("RPG_CACHE_TTL_HOURS", "24")
-        cache_ttl_hours = int(cache_ttl_raw) if cache_ttl_raw and cache_ttl_raw.isdigit() else 24
+        cache_ttl_hours = (
+            int(cache_ttl_raw) if cache_ttl_raw and cache_ttl_raw.isdigit() else 24
+        )
 
         return cls(
             env=env,
@@ -265,7 +269,8 @@ def _build_dataset_uris() -> DatasetUris:
     return DatasetUris(
         overture_places_base=overture_base,
         overture_places=_get_env_var("RPG_OVERTURE_PLACES_URI", "") or "",
-        overture_administrative=_get_env_var("RPG_OVERTURE_ADMINISTRATIVE_URI", "") or "",
+        overture_administrative=_get_env_var("RPG_OVERTURE_ADMINISTRATIVE_URI", "")
+        or "",
         overture_land=_get_env_var("RPG_OVERTURE_LAND_URI", "") or "",
         overture_water=_get_env_var("RPG_OVERTURE_WATER_URI", "") or "",
         osm_extract=_get_env_var("RPG_OSM_EXTRACT_URI", "") or "",

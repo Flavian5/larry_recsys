@@ -127,31 +127,34 @@ def _h3_ring_cells(cell: str, k: int = 1) -> set[str]:
 
 def _aggregate_candidates_to_silver(
     o_df: pd.DataFrame,
-    candidates: Sequence[tuple[object, object, object, object]],
+    candidates: Sequence[tuple[object, object, object, object, dict | None]],
 ) -> pd.DataFrame:
-    """Build one row per Overture place with lists of osm_ids, osm_amenities, has_dog_friendly.
-    candidates: list of (gers_id, osm_id, amenity, dog_friendly).
+    """Build one row per Overture place with lists of osm_ids, osm_amenities, has_dog_friendly, and aggregated osm_tags.
+    candidates: list of (gers_id, osm_id, amenity, dog_friendly, osm_tags).
     """
     from collections import defaultdict
 
-    # gers_id -> (osm_ids, amenities, any_dog_friendly)
-    agg: dict[object, tuple[list[object], list[object], bool]] = defaultdict(
-        lambda: ([], [], False)
+    # gers_id -> (osm_ids, amenities, any_dog_friendly, list of osm_tags blobs)
+    agg: dict[object, tuple[list[object], list[object], bool, list[dict]]] = defaultdict(
+        lambda: ([], [], False, [])
     )
-    for gers_id, osm_id, amenity, dog_friendly in candidates:
-        osm_ids, amenities, any_dog = agg[gers_id]
+    for gers_id, osm_id, amenity, dog_friendly, osm_tags in candidates:
+        osm_ids, amenities, any_dog, tags_blobs = agg[gers_id]
         osm_ids.append(osm_id)
         if amenity is not None:
             amenities.append(amenity)
         if dog_friendly:
-            agg[gers_id] = (osm_ids, amenities, True)
+            agg[gers_id] = (osm_ids, amenities, True, tags_blobs)
         else:
-            agg[gers_id] = (osm_ids, amenities, any_dog)
+            agg[gers_id] = (osm_ids, amenities, any_dog, tags_blobs)
+        # Add osm_tags blob if present
+        if osm_tags:
+            tags_blobs.append(osm_tags)
 
     records: list[dict] = []
     for _, o_row in o_df.iterrows():
         gers_id = o_row["gers_id"]
-        osm_ids, amenities, any_dog = agg.get(gers_id, ([], [], False))
+        osm_ids, amenities, any_dog, tags_blobs = agg.get(gers_id, ([], [], False, []))
         rec: dict = {
             "gers_id": gers_id,
             "lat": float(o_row["lat"]),
@@ -160,6 +163,18 @@ def _aggregate_candidates_to_silver(
             "osm_amenities": amenities,
             "has_dog_friendly": any_dog,
         }
+        # Aggregate all osm_tags into a single dict with merged values
+        if tags_blobs:
+            merged_tags: dict[str, list] = defaultdict(list)
+            for blob in tags_blobs:
+                for k, v in blob.items():
+                    if k not in merged_tags:
+                        merged_tags[k] = []
+                    if v not in merged_tags[k]:
+                        merged_tags[k].append(v)
+            # Convert lists to single values where possible (first value)
+            final_tags = {k: v[0] if len(v) == 1 else v for k, v in merged_tags.items()}
+            rec["osm_tags"] = final_tags
         if "city" in o_row:
             rec["city"] = o_row["city"]
         if "theme" in o_row and o_row.get("theme"):
@@ -251,6 +266,7 @@ def spatial_conflate(
             within["osm_id"],
             within.get("amenity", pd.Series([None] * len(within))),
             within.get("dog_friendly", pd.Series([False] * len(within))),
+            within.get("osm_tags", pd.Series([None] * len(within))),
         )
     )
     return _aggregate_candidates_to_silver(o_df, candidates)

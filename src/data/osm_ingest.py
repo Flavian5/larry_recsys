@@ -57,8 +57,29 @@ def _get_center(el: dict) -> tuple[float, float] | None:
     return None
 
 
+# Tags to include in the JSON blob for rich venue descriptions
+OSM_TAG_KEYS = [
+    "name", "amenity", "shop", "leisure", "tourism", "cuisine", "dog_friendly",
+    "wheelchair", "wifi", "opening_hours", "website", "phone", "payment",
+    "price_range", "capacity", "addr:street", "addr:housenumber", "addr:city",
+    "addr:postcode", "addr:country", "description", "elevation", "height",
+    "building", "level", "access", "surface", "lit", "parking", "toilets",
+    "internet_access", "atm", "bank", "pharmacy", "hospital", "school",
+    "fuel", "car_wash", "car_repair", "fast_food", "bar", "cafe", "restaurant",
+]
+
+
+def _tags_to_blob(tags: dict) -> dict:
+    """Extract relevant tags into a JSON blob for rich descriptions."""
+    blob = {}
+    for key in OSM_TAG_KEYS:
+        if key in tags and tags[key]:
+            blob[key] = tags[key]
+    return blob
+
+
 def elements_to_rows(elements: list) -> list[dict]:
-    """Convert Overpass elements (nodes and ways) to rows with osm_id, lat, lon, amenity, shop, leisure, tourism."""
+    """Convert Overpass elements (nodes and ways) to rows with osm_id, lat, lon, and full tags as JSON blob."""
     rows = []
     for el in elements:
         el_type = el.get("type")
@@ -81,10 +102,12 @@ def elements_to_rows(elements: list) -> list[dict]:
         category = amenity or shop or leisure or tourism or None
         
         # For backward compatibility with conflation code, set amenity to category
-        # This ensures shop/leisure/tourism POIs are included in osm_amenities
         amenity_for_matching = category
         
         dog = tags.get("dog_friendly") or tags.get("dogs") or None
+        
+        # Extract all relevant tags as JSON blob
+        osm_tags_blob = _tags_to_blob(tags)
         
         rows.append(
             {
@@ -102,9 +125,15 @@ def elements_to_rows(elements: list) -> list[dict]:
                 "dog_friendly": (
                     str(dog).lower() in ("yes", "true", "1") if dog else None
                 ),
+                # Full JSON blob for rich descriptions in silver-to-gold
+                "osm_tags": osm_tags_blob if osm_tags_blob else None,
             }
         )
     return rows
+
+
+# Backward compatibility alias
+nodes_to_rows = elements_to_rows
 
 
 def fetch_osm_pois_via_overpass(
@@ -149,6 +178,7 @@ def extract_osm_pois(
     - `lat`
     - `lon`
     - optional tag columns such as `amenity`, `cuisine`, `dog_friendly`
+    - optional `osm_tags` column with the full tags as JSON blob
     - optional `raw_tags` column with the original tag map encoded as JSON.
 
     In a future iteration this function can be extended to support `.osm.pbf`
@@ -178,9 +208,13 @@ def extract_osm_pois(
         if col not in df.columns:
             raise ValueError(f"Expected column '{col}' in OSM input Parquet at {src}")
 
-    # Normalise column order
+    # Build output columns - preserve osm_tags blob if present for rich descriptions
     base_cols: list[str] = ["osm_id", "lat", "lon"]
     ordered_cols: list[str] = base_cols + keys
+    
+    # Include osm_tags blob column if present for silver-to-gold rich descriptions
+    if "osm_tags" in df.columns:
+        ordered_cols.append("osm_tags")
     if "raw_tags" in df.columns:
         ordered_cols.append("raw_tags")
 

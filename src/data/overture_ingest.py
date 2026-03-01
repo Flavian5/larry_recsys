@@ -15,21 +15,19 @@ DEFAULT_OVERTURE_S3_BUCKET = "overturemaps-us-west-2"
 
 
 class OvertureTheme(str, Enum):
-    """Overture Maps theme names."""
+    """Overture Maps theme names (2026+ releases)."""
 
     PLACES = "places"
-    ADMINISTRATIVE = "administrative"
-    LAND = "land"
-    WATER = "water"
+    DIVISIONS = "divisions"
+    BASE = "base"
 
     @property
     def default_type(self) -> str:
         """Default type for each theme."""
         return {
             OvertureTheme.PLACES: "place",
-            OvertureTheme.ADMINISTRATIVE: "admins",
-            OvertureTheme.LAND: "land",
-            OvertureTheme.WATER: "water",
+            OvertureTheme.DIVISIONS: "division",
+            OvertureTheme.BASE: "bathymetry",
         }[self]
 
 

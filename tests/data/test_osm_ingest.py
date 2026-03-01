@@ -88,7 +88,12 @@ def test_fetch_osm_pois_via_overpass_writes_parquet(tmp_path: Path) -> None:
         fetch_osm_pois_via_overpass((37.7, -122.5, 37.9, -122.3), out)
     assert out.exists()
     df = pd.read_parquet(out)
-    assert list(df.columns) == ["osm_id", "lat", "lon", "amenity", "cuisine", "dog_friendly"]
+    # New format includes additional columns: osm_type, category, shop, leisure, tourism, name, osm_tags
+    assert "osm_id" in df.columns
+    assert "lat" in df.columns
+    assert "lon" in df.columns
+    assert "amenity" in df.columns
+    assert "osm_tags" in df.columns  # New JSON blob column
     assert len(df) == 1
     extract_osm_pois(out, tmp_path / "pois.parquet")
     assert (tmp_path / "pois.parquet").exists()
@@ -96,5 +101,5 @@ def test_fetch_osm_pois_via_overpass_writes_parquet(tmp_path: Path) -> None:
 
 def test_fetch_osm_pois_via_overpass_raises_when_no_elements(tmp_path: Path) -> None:
     with patch("data.osm_ingest.overpass_query", return_value={"elements": []}):
-        with pytest.raises(ValueError, match="No nodes"):
+        with pytest.raises(ValueError, match="No elements"):
             fetch_osm_pois_via_overpass((37.7, -122.5, 37.9, -122.3), tmp_path / "out.parquet")

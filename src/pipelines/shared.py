@@ -43,7 +43,9 @@ def get_overture_cache_path(
     """
     release = cfg.overture_release_date or "unknown"
     minx, maxx, miny, maxy = bbox
-    cache_filename = f"overture_{theme.value}_{release}_{minx}_{maxx}_{miny}_{maxy}.parquet"
+    cache_filename = (
+        f"overture_{theme.value}_{release}_{minx}_{maxx}_{miny}_{maxy}.parquet"
+    )
     return _cache_dir(cfg, "overture") / cache_filename
 
 
